@@ -572,6 +572,7 @@ test('apply installs lead policy and a waiting team_assign tool', async () => {
     assert.equal(sent[0].targetId, roleSessionId);
     assert.match(sent[0].content[0].text, /固定身份/);
     assert.equal(sent[1].targetId, roleSessionId);
+    assert.match(sent[1].content[0].text, /workspace=\//);
     assert.match(sent[1].content[0].text, /实现登录并运行测试/);
     assert.deepEqual(attached, [roleSessionId]);
     assert.ok(flushed.includes(roleSessionId));

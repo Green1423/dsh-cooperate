@@ -1380,10 +1380,11 @@ export function apply(ctx) {
 
   async function performAssignment({ store, workspace, org, role, caller, task, signal, delegatorName, delegatorRoleId = '' }) {
     const startedAt = Date.now();
+    const scopedTask = `workspace=${workspace.path}\n${task}`;
     const run = runs.start({
       workspaceId: workspace.id,
       role,
-      task,
+      task: scopedTask,
       agent: caller,
       childSessionId: typeof role.sessionId === 'string' ? role.sessionId : '',
       delegatorName,
@@ -1396,7 +1397,7 @@ export function apply(ctx) {
         role,
         workspace,
         caller,
-        task,
+        task: scopedTask,
         signal,
       });
       run.childSessionId = String(result.childId);
@@ -3086,7 +3087,7 @@ export function apply(ctx) {
         additionalProperties: false,
         properties: {
           role: { type: 'string', description: '直属下级的 id/姓名/职位。' },
-          task: { type: 'string', description: '紧凑任务字段：goal=...; scope=...; files=...; accept=...; deps=...。' },
+          task: { type: 'string', description: '紧凑任务字段：goal=...; workspace=<绝对路径>; files=...; accept=...; deps=...。' },
           reason: { type: 'string', description: '为什么把这项工作安排给该直属下级；必填。' },
           waitForAll: { type: 'boolean', description: '可选：是否等当前工作区所有正在运行的委派都完成后再返回，默认 false（只等本次）。' },
         },
