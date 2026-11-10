@@ -3655,14 +3655,19 @@ export function apply(ctx) {
               const resolved = await ctx.sessionController.agents.resolveAgent(role.sessionId);
               if (!('error' in resolved)) agent = resolved.agent;
             }
-            if (agent !== undefined && typeof agent.inject === 'function') {
-              agent.inject({
-                id: randomUUID(),
-                role: 'user',
-                content: [{ type: 'text', text: renderPrompt(promptData.scopeUpdate, { authority, boundaries }) }],
-                source: { kind: 'user' },
-              });
-              sessionNotified = true;
+            if (agent !== undefined) {
+              const controller = new AbortController();
+              const timer = setTimeout(() => controller.abort(new Error('职权更新通知超时')), 120_000);
+              try {
+                const result = await runAgentTurn(
+                  agent,
+                  renderPrompt(promptData.scopeUpdate, { authority, boundaries }),
+                  controller.signal,
+                );
+                sessionNotified = result.reason?.kind === 'completed';
+              } finally {
+                clearTimeout(timer);
+              }
             }
           } catch (error) {
             console.warn('[agent-org] could not inject updated scope into role session:', error);
