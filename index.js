@@ -3657,19 +3657,14 @@ export function apply(ctx) {
               const resolved = await ctx.sessionController.agents.resolveAgent(role.sessionId);
               if (!('error' in resolved)) agent = resolved.agent;
             }
-            if (agent !== undefined) {
-              const controller = new AbortController();
-              const timer = setTimeout(() => controller.abort(new Error('职权更新通知超时')), 120_000);
-              try {
-                const result = await runAgentTurn(
-                  agent,
-                  buildScopeUpdatePrompt(authority, boundaries),
-                  controller.signal,
-                );
-                sessionNotified = result.reason?.kind === 'completed';
-              } finally {
-                clearTimeout(timer);
-              }
+            if (agent !== undefined && typeof agent.followup === 'function') {
+              agent.followup({
+                id: randomUUID(),
+                role: 'user',
+                content: [{ type: 'text', text: buildScopeUpdatePrompt(authority, boundaries) }],
+                source: { kind: 'user' },
+              });
+              sessionNotified = true;
             }
           } catch (error) {
             notificationError = errorMessage(error);
