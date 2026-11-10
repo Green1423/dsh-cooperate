@@ -208,6 +208,11 @@ with its own onboarding flow.
   timestamp, actor, action, affected role, reason, and a short summary. This
   applies to lead and captain assignments, member creation, module groups,
   firing, parking/restoring, effort changes, and relation changes.
+- **Editable natural-language content** — role templates, organization
+  patterns, and per-role authority/boundary/workflow playbooks live in
+  `content/*.json`; prompt templates live in `content/prompts.json`. UI copy
+  lives in `locale/*.json`. The lead can persist a learned role or org pattern
+  with `team_save_knowledge`.
 - **Open-source-first research** — before presenting a plan, the lead must search
   for existing open-source implementations/libraries/templates and include a
   reuse assessment: candidates, links, licenses, maintenance, integration cost,

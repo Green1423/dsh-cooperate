@@ -13,11 +13,14 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
+import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { OrgValidationError, ROLE_LEVELS, buildEmployeeIdentityPrompt, buildLeadPrompt, buildRoleBootstrapPrompt, buildMidprojectReportPrompt, buildRoleTaskPrompt, buildTeamDesignPrompt, createDefaultOrg, findRole, normalizeEffort, publicOrg } from './org.js';
+import { OrgValidationError, ORG_PATTERNS, ROLE_LEVELS, ROLE_TEMPLATES, buildEmployeeIdentityPrompt, buildLeadPrompt, buildRoleBootstrapPrompt, buildMidprojectReportPrompt, buildRoleTaskPrompt, buildTeamDesignPrompt, createDefaultOrg, findRole, normalizeEffort, publicOrg } from './org.js';
 import { OrgRevisionError, createOrgStore } from './org-store.js';
 import { createExperienceStore } from './experience.js';
+import teamHelpData from './content/team-help.json' with { type: 'json' };
 
 export const name = 'agent-org';
 export const inject = ['webServer', 'tools', 'systemPrompt', 'subagents', 'agents', 'sessions', 'workspaceRegistry', 'sessionTitle', 'sessionQuery', 'sessionController', 'skills'];
@@ -29,45 +32,9 @@ const MAX_RUN_SUMMARY_CHARS = 4_000;
 const MAX_TOOL_SUMMARY_CHARS = 6_000;
 const PROVIDER = 'spawn';
 const TEAM_HELP_VERSION = '2026.11.05';
-const TEAM_HELP_TOOLS = [
-  { name: 'team_help', roles: ['lead', 'captain'], purpose: '查看当前可用工具、参数、提示词规则和团队状态。插件更新后不知道有哪些新能力时先调用。', args: 'topic?: all|tools|prompts|changelog; query?: string', when: '不确定工具用法、用户问你能做什么、或刚更新插件后。' },
-  { name: 'team_my_reports', roles: ['lead', 'captain', 'member'], purpose: '查询当前会话负责人的直属下级名单、级别、状态和思考强度；只返回直接汇报成员。', args: '无', when: '准备委派、确认团队结构，或不确定自己有哪些直属下级时。' },
-  { name: 'team_task_start', roles: ['lead'], purpose: '组长开始处理新任务时填写一句话任务标题并启动总用时计时。', args: 'title', when: '每次用户给组长一个新任务、开始拆解或委派之前。' },
-  { name: 'team_task_finish', roles: ['lead'], purpose: '结束当前任务计时，保存最终总用时，面板显示完成状态。', args: '无', when: '最终交付/答复给出前，或任务中止时。' },
-  { name: 'team_assign', roles: ['lead', 'captain'], purpose: '把一个自包含任务委派给直接下属，并等待结果；可选择等待本工作区所有委派完成。', args: 'role, task(goal/scope/files/accept/deps), reason, waitForAll?', when: '有明确可验收、且属于直属下级职责的工作；需要汇总全部并行结果时设 waitForAll=true。' },
-  { name: 'team_create_member', roles: ['lead'], purpose: '创建成员、写身份提示词、指定汇报对象，并在创建时实时选择模型。', args: 'title, responsibilities, instructions, provider, model, reasoningEffort?, reportsTo?, level?, name?, reason', when: '缺少岗位，或需要新增同岗位队长/队员；模型参数必填。' },
-  { name: 'team_create_module_group', roles: ['lead'], purpose: '一次创建软件模块组，并在创建时统一选择实时模型。', args: 'module, provider, model, reason, reasoningEffort?, specialty?, manager?, files?', when: '软件模块边界明确，需要独立小组交付；模型参数必填。' },
-  { name: 'team_fire_member', roles: ['lead'], purpose: '删除成员角色并归档成员会话；不可逆。', args: 'role, reason, confirm=true', when: '用户明确要求开除，且成员没有直属下级。' },
-  { name: 'team_set_member_active', roles: ['lead'], purpose: '暂停或恢复成员；保留角色和会话。', args: 'role, active, reason', when: '临时减少人员但不删除。' },
-  { name: 'team_set_effort', roles: ['lead', 'captain'], purpose: '按目标模型的实时目录设置直属成员思考强度（如 minimal/off/low/medium/high/xhigh/max）。', args: 'role, effort, reason', when: '按任务复杂度调整直属成员推理预算。' },
-  { name: 'team_relation', roles: ['lead', 'captain'], purpose: '管理临时关系、固定汇报关系和交接顺序。', args: 'action create_temporary|set_manager|add_handoff|remove_handoff, from, to, reason, ...', when: '需要跨角色协作、转移汇报或规定交接顺序。' },
-  { name: 'team_request_help', roles: ['captain', 'member'], purpose: '向团队内其他角色提交临时求助申请；不会直接执行，先进入组长审批。', args: 'role, task, reason', when: '组员需要其他角色专业协助、且不属于自己直属下级时。' },
-  { name: 'team_report_failure', roles: ['captain'], purpose: '队长把持续报错的直属成员上报给组长，附失败次数和最后诊断；不直接删除成员。', args: 'role, reason', when: '直属成员反复出现模型/provider/会话错误，需要组长审批重建时。' },
-  { name: 'team_review_failure', roles: ['lead'], purpose: '列出、批准或拒绝队长的失败成员上报；批准时选择新模型并原子替换成员。', args: 'action? list|approve|reject, requestId?, provider?, model?, reasoningEffort?, reason?', when: '处理 team_report_failure 的待审批请求。' },
-  { name: 'team_review_help', roles: ['lead'], purpose: '列出、批准或拒绝组员的临时求助申请；批准后才建立临时关系并委派。', args: 'action? list|approve|reject, requestId?, reason?', when: '处理 team_request_help 提交的待审批请求。' },
-  { name: 'team_skill_search', roles: ['lead', 'captain'], purpose: '搜索当前 DSH Skill 目录，并确认目标成员是否为自己的直属下级。', args: 'role?, query?, limit?', when: '准备给成员注入 skill 前。' },
-  { name: 'team_skill_inject', roles: ['lead', 'captain'], purpose: '把已安装 skill 或自定义 skill 注入直属成员。', args: 'role, skill|name+instructions, reason', when: '已确认成员和 skill 后。' },
-  { name: 'team_select_model', roles: ['lead', 'captain'], purpose: '查看实时模型名称/能力/思考强度分级，或给组长/直属成员分配模型。', args: 'role?, provider?, model?, reasoningEffort?, reason?', when: '按任务复杂度主动选择或给直属成员分配模型；带 role 操作成员。' },
-  { name: 'team_failure_diagnosis', roles: ['lead'], purpose: '只读诊断最近的委派失败：按成员聚合失败次数和最后诊断，区分单成员故障与全局模型/provider 故障。', args: 'limit?', when: '某成员连续报错，准备决定是否开除重建前。' },
-  { name: 'team_project_summary', roles: ['lead'], purpose: '把项目或阶段经验提炼成短 skill 并全局保存，未来注入组长。', args: 'kind project|stage, title, summary, instructions', when: '项目完成或重要阶段结束时。' },
-];
-const TEAM_HELP_NOTES = [
-  'HR 角色已移除；组长直接使用 team_create_member / team_create_module_group 招聘和组建模块组。',
-  '组长必须按任务复杂度主动选择模型，比较推理、代码、上下文、工具/多模态、速度、成本和 provider 稳定性，并受 lead.modelPolicy 限制。',
-  'team_skill_search 可传 role 确认直属成员；搜索结果会列出可接收 skill 的直属下属，搜索本身不注入。',
-  '注入的 skill 会进入成员固定身份和后续任务提示；用户也可以从 Team Org 角色编辑中注入。',
-  '每个项目完成或重要阶段结束时用 team_project_summary 沉淀短经验；经验全局保存并自动注入未来组长提示词。',
-  '所有委派和人事变更都必须写 reason；组长和队长都只能管理直接向自己汇报的成员。任何成员都可用 team_my_reports 确认直属下级。',
-  '面向人的正式文档由文档师在实现/测试/审核/安全验收后最后完成，不阻塞技术流程；面向 AI 的注释、接口契约、任务交接由实际需要它的角色自行维护。',
-  '每个关键进展（模块完成、功能冻结、可演示版本、对外分享、交付候选）后都要做一次隐私/安全审查和 GitHub 提交，不能攒到项目最后；最终交付前再做终审闸门。',
-  '每个新任务开始时由组长调用 team_task_start 填写一句话标题并启动计时；最终交付或中止时调用 team_task_finish。面板任务标签显示本次任务总用时。',
-  '组长必须先给方案并等待用户明确批准，批准前不得委派、建人、删人、改模型/关系或执行；方案变化需重新审批。',
-  '给方案前必须先搜索是否存在可用开源实现/库/模板，并在方案里列出候选、许可证、维护状态、集成成本与采用/自研理由，避免重复造轮子。',
-  '队长发现直属成员持续报错时用 team_report_failure 上报；组长用 team_review_failure 审批，批准时必须选择新模型，系统会替换角色、转移下级/skills 并归档旧会话。',
-  '模型默认优先 opencode-go/deepseek-v4.1-flash；除非用户明确指定/模型不可用/任务确有更强需求，否则不要选其他模型。调用 team_select_model 前先核对实时 provider/model/effort 与允许范围，切换后检查返回的 selected。新建成员/模块组必须带 provider/model（可选 reasoningEffort），不能省略。',
-  '组员需要其他角色帮忙时，用 team_request_help 提交申请；组长必须用 team_review_help 审批。批准后才建立临时关系并委派，委托结束（含失败/中止）时关系自动断开。',
-  '某成员反复出现模型/provider/会话错误时，先用 team_failure_diagnosis 聚合诊断；只有单个成员持续失败才开除并重建，多个成员同时失败应先排查全局模型/provider。',
-];
+const TEAM_HELP_TOOLS = teamHelpData.tools;
+const TEAM_HELP_NOTES = teamHelpData.notes;
+
 let experienceStore = null;
 const MODEL_PRICING_URL = 'https://models.dev/api.json';
 const USD_CNY_URL = 'https://open.er-api.com/v6/latest/USD';
@@ -1662,6 +1629,133 @@ export function apply(ctx) {
           recommendation,
           summary: `${recommendation}\n失败聚合：\n${lines}`,
         };
+      },
+    };
+  }
+
+  function contentDirectory() {
+    return process.env.DSH_AGENT_ORG_CONTENT_DIR
+      || fileURLToPath(new URL('./content/', import.meta.url));
+  }
+
+  function writeJsonAtomic(path, value) {
+    const temp = `${path}.${process.pid}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    renameSync(temp, path);
+  }
+
+  function slugId(prefix) {
+    return `${prefix}-${randomUUID().slice(0, 8)}`;
+  }
+
+  function createSaveKnowledgeTool(employee) {
+    const { store } = employee;
+    return {
+      name: 'team_save_knowledge',
+      description: 'Lead only. Persist a newly learned role template or organization pattern into categorized JSON under content/, so future teams can reuse it. Requires a reason and validates before writing.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['role_template', 'org_pattern'], description: '要沉淀的分类。' },
+          title: { type: 'string', description: 'role_template 的职位名称（1–24 字）。' },
+          name: { type: 'string', description: 'org_pattern 的模式名称（1–40 字）。' },
+          responsibilities: { type: 'string', description: 'role_template 的职责摘要。' },
+          instructions: { type: 'string', description: 'role_template 的身份提示词/工作准则。' },
+          level: { type: 'string', enum: ['member', 'captain'], description: 'role_template 的级别，默认 member。' },
+          accent: { type: 'string', description: 'role_template 的六位十六进制强调色。' },
+          fit: { type: 'string', description: 'org_pattern 适用场景。' },
+          shape: { type: 'string', description: 'org_pattern 的结构说明。' },
+          avoid: { type: 'string', description: 'org_pattern 的禁止事项。' },
+          reason: { type: 'string', description: '为什么这个知识值得沉淀；必填。' },
+        },
+        required: ['type', 'reason'],
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            type: { type: 'string' },
+            id: { type: 'string' },
+            title: { type: 'string' },
+            path: { type: 'string' },
+            summary: { type: 'string' },
+          },
+          required: ['type', 'id', 'title', 'path', 'summary'],
+        },
+        render(_args, value) {
+          return [{ type: 'text', text: value.summary }];
+        },
+      },
+      isConcurrencySafe: () => false,
+      presentCall(args) {
+        return { card: 'generic', title: `沉淀团队知识：${args.title ?? args.name ?? ''}`, kind: 'other', rawInput: args };
+      },
+      async execute(args, exec) {
+        if (disposed) throw new Error('Agent Org 插件已卸载');
+        await store.refresh();
+        if (!store.configured || !store.current.enabled) throw new Error('协作组尚未启用，不能沉淀团队知识。');
+        if (store.current.lead.sessionId !== exec.agent?.session?.id) throw new Error('只有组长可以沉淀团队知识。');
+        const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
+        if (reason.length < 2) throw new Error('沉淀知识必须填写 reason。');
+        const type = args.type === 'org_pattern' ? 'org_pattern' : 'role_template';
+        const dir = contentDirectory();
+        if (type === 'role_template') {
+          const title = typeof args.title === 'string' ? args.title.trim() : '';
+          const responsibilities = typeof args.responsibilities === 'string' ? args.responsibilities.trim() : '';
+          const instructions = typeof args.instructions === 'string' ? args.instructions.trim() : '';
+          if (title.length < 1 || title.length > 24) throw new Error('职位名称需要 1–24 个字符。');
+          if (responsibilities.length < 1 || responsibilities.length > 1000) throw new Error('职责需要 1–1000 个字符。');
+          if (instructions.length < 1 || instructions.length > 4000) throw new Error('工作准则需要 1–4000 个字符。');
+          if (ROLE_TEMPLATES.some((template) => template.title === title) || store.current.templates.some((template) => template.title === title)) {
+            throw new Error(`职位模板「${title}」已存在。`);
+          }
+          const accent = /^#[0-9A-Fa-f]{6}$/.test(String(args.accent ?? '')) ? String(args.accent).toUpperCase() : '#7C6CFF';
+          const template = {
+            id: slugId('tpl-learned'),
+            title,
+            accent,
+            responsibilities,
+            instructions,
+            level: args.level === 'captain' ? 'captain' : 'member',
+            builtin: false,
+          };
+          const path = join(dir, 'role-templates.json');
+          const current = JSON.parse(readFileSync(path, 'utf8'));
+          if (!Array.isArray(current)) throw new Error('role-templates.json 格式错误，必须是数组。');
+          current.push(template);
+          writeJsonAtomic(path, current);
+          ROLE_TEMPLATES.push(template);
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            const snapshot = store.current;
+            try {
+              await store.save(snapshot.revision, { ...snapshot, templates: [...snapshot.templates, template] });
+              break;
+            } catch (error) {
+              if (error instanceof OrgRevisionError && attempt < 2) continue;
+              throw error;
+            }
+          }
+          return { type, id: template.id, title, path, summary: `已把职位「${title}」写入 ${path}，并加入当前团队模板列表。` };
+        }
+        const name = typeof args.name === 'string' ? args.name.trim() : '';
+        const fit = typeof args.fit === 'string' ? args.fit.trim() : '';
+        const shape = typeof args.shape === 'string' ? args.shape.trim() : '';
+        const avoid = typeof args.avoid === 'string' ? args.avoid.trim() : '';
+        if (name.length < 1 || name.length > 40) throw new Error('架构模式名称需要 1–40 个字符。');
+        if (fit.length < 1 || fit.length > 300) throw new Error('适用场景需要 1–300 个字符。');
+        if (shape.length < 1 || shape.length > 600) throw new Error('结构说明需要 1–600 个字符。');
+        if (avoid.length < 1 || avoid.length > 600) throw new Error('禁止事项需要 1–600 个字符。');
+        if (ORG_PATTERNS.some((pattern) => pattern.name === name)) throw new Error(`组织架构模式「${name}」已存在。`);
+        const pattern = { id: slugId('pattern-learned'), name, fit, shape, avoid };
+        const path = join(dir, 'org-patterns.json');
+        const current = JSON.parse(readFileSync(path, 'utf8'));
+        if (!Array.isArray(current)) throw new Error('org-patterns.json 格式错误，必须是数组。');
+        current.push(pattern);
+        writeJsonAtomic(path, current);
+        ORG_PATTERNS.push(pattern);
+        return { type, id: pattern.id, title: name, path, summary: `已把组织架构模式「${name}」写入 ${path}，后续组长可直接参考。` };
       },
     };
   }
@@ -3849,6 +3943,7 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createTaskStartTool({ store })));
       disposers.push(agent.ctx.tools.register(createTaskFinishTool({ store })));
       disposers.push(agent.ctx.tools.register(createMyReportsTool({ store })));
+      disposers.push(agent.ctx.tools.register(createSaveKnowledgeTool({ store })));
       disposers.push(agent.ctx.tools.register(createFailureDiagnosisTool()));
       disposers.push(agent.ctx.tools.register(createReviewHelpTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createReviewFailureTool({ store, workspace })));

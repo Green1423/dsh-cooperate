@@ -420,7 +420,7 @@ test('apply installs lead policy and a waiting team_assign tool', async () => {
     assert.equal(root.captured.sections.length, 2);
     assert.equal(root.captured.sections[0].interpolate, false);
     assert.match(root.captured.sections[0].text(), /尚未启用/);
-    assert.equal(root.captured.tools.length, 18);
+    assert.equal(root.captured.tools.length, 19);
     assert.equal(root.captured.tools[0].name, 'team_assign');
     assert.equal(root.captured.tools[0].isConcurrencySafe(), true);
     assert.equal(root.captured.tools[1].name, 'team_relation');

@@ -1,0 +1,215 @@
+{
+  "tools": [
+    {
+      "name": "team_help",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "查看工具、参数、提示词规则",
+      "args": "topic?/query?",
+      "when": "不确定工具或插件更新后"
+    },
+    {
+      "name": "team_my_reports",
+      "roles": [
+        "lead",
+        "captain",
+        "member"
+      ],
+      "purpose": "查看直属下级名单与状态",
+      "args": "无",
+      "when": "委派或确认结构前"
+    },
+    {
+      "name": "team_save_knowledge",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "把新职位/架构写入 JSON",
+      "args": "type/name或title/.../reason",
+      "when": "出现可复用知识时"
+    },
+    {
+      "name": "team_task_start",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "填写任务标题并开始计时",
+      "args": "title",
+      "when": "新任务开始、拆解前"
+    },
+    {
+      "name": "team_task_finish",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "结束任务计时并冻结总用时",
+      "args": "无",
+      "when": "最终交付或中止前"
+    },
+    {
+      "name": "team_assign",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "委派给直属下级并等待结果",
+      "args": "role/task/reason/waitForAll?",
+      "when": "有可验收的直属工作时"
+    },
+    {
+      "name": "team_create_member",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "创建成员并在创建时选模型",
+      "args": "title/responsibilities/instructions/provider/model/reason",
+      "when": "缺岗位时"
+    },
+    {
+      "name": "team_create_module_group",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "一次创建软件模块组并选模型",
+      "args": "module/provider/model/reason",
+      "when": "模块边界明确时"
+    },
+    {
+      "name": "team_fire_member",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "删除成员并归档会话",
+      "args": "role/reason/confirm",
+      "when": "用户明确要求或故障恢复"
+    },
+    {
+      "name": "team_set_member_active",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "暂停/恢复成员，保留会话",
+      "args": "role/active/reason",
+      "when": "临时减员"
+    },
+    {
+      "name": "team_set_effort",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "设置直属成员思考强度",
+      "args": "role/effort/reason",
+      "when": "按任务复杂度调整"
+    },
+    {
+      "name": "team_relation",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "管理临时关系/汇报/交接",
+      "args": "action/from/to/reason",
+      "when": "跨角色协作或改关系"
+    },
+    {
+      "name": "team_request_help",
+      "roles": [
+        "captain",
+        "member"
+      ],
+      "purpose": "提交临时求助申请给组长审批",
+      "args": "role/task/reason",
+      "when": "需要其他角色协助"
+    },
+    {
+      "name": "team_report_failure",
+      "roles": [
+        "captain"
+      ],
+      "purpose": "队长上报持续失败的直属成员",
+      "args": "role/reason",
+      "when": "直属成员反复报错"
+    },
+    {
+      "name": "team_review_failure",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "组长审批失败成员并重建",
+      "args": "action/requestId/provider/model/reason",
+      "when": "处理失败上报"
+    },
+    {
+      "name": "team_review_help",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "组长审批临时求助",
+      "args": "action/requestId/reason",
+      "when": "处理求助申请"
+    },
+    {
+      "name": "team_skill_search",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "搜索技能并确认直属成员",
+      "args": "role?/query?/limit?",
+      "when": "注入技能前"
+    },
+    {
+      "name": "team_skill_inject",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "给直属成员注入技能",
+      "args": "role/skill或name+instructions/reason",
+      "when": "确认成员和技能后"
+    },
+    {
+      "name": "team_select_model",
+      "roles": [
+        "lead",
+        "captain"
+      ],
+      "purpose": "查看/分配实时模型与思考强度",
+      "args": "role?/provider?/model?/effort?/reason?",
+      "when": "选模型或分配成员"
+    },
+    {
+      "name": "team_failure_diagnosis",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "聚合近期失败并给重建建议",
+      "args": "limit?",
+      "when": "决定是否重建前"
+    },
+    {
+      "name": "team_project_summary",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "沉淀项目/阶段经验",
+      "args": "kind/title/summary/instructions",
+      "when": "项目完成或阶段结束"
+    }
+  ],
+  "notes": [
+    "HR 角色已移除；组长直接创建成员或模块组。",
+    "业务需求先方案、后执行；批准前不得委派、建人、改模型/关系或执行。",
+    "给方案前先做开源调研，方案中写清候选、许可证、维护状态和采用理由。",
+    "模型默认优先 opencode-go/deepseek-v4.1-flash；切换前核对实时 provider/model/effort 和范围。",
+    "team_skill_search 传 role 确认直属成员，搜索本身不注入。",
+    "每个项目或阶段结束用 team_project_summary 沉淀短经验，全局注入未来组长。",
+    "关键进展后做代码审核、测试、隐私/安全审查和 GitHub 提交，不攒到最后。",
+    "面向人的文档最后由文档师完成；面向 AI 的注释/接口/交接由需要的人维护。",
+    "成员持续失败由队长 team_report_failure 上报，组长 team_review_failure 审批重建。",
+    "任何委派、人事或关系变更都必须写 reason；组长和队长只能管理直属成员。"
+  ]
+}

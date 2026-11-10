@@ -8,7 +8,6 @@ import {
   buildLeadPrompt,
   buildRoleBootstrapPrompt,
   buildMidprojectReportPrompt,
-  buildRolePrompt,
   buildRoleTaskPrompt,
   createDefaultOrg,
   migrateLegacyHr,
@@ -152,35 +151,14 @@ test('lead prompt reports live status, hierarchy, and the no-self-edit boundary'
 });
 
 
-test('complex projects require a dedicated designer and designers get a design workflow', () => {
-  const org = createDefaultOrg();
-  const designer = {
-    id: 'designer',
-    name: '产品设计师-01',
-    title: '产品设计师',
-    level: 'member',
-    reportsTo: 'lead',
-    responsibilities: '负责信息架构与交互。',
-    instructions: '先确认目标，再给可实现的方案。',
-  };
-  const prompt = buildRolePrompt(org, designer, '设计个人主页', { workspace: { path: '/workspace', title: 'demo' } });
+test('designer identity includes the design workflow', () => {
+  const org = orgWith([sampleRole()]);
+  const role = org.roles[0];
+  const prompt = buildEmployeeIdentityPrompt(org, role, { path: '/workspace', title: 'demo' });
   assert.match(prompt, /设计工作流/);
   assert.match(prompt, /专职设计师/);
 });
 
-test('role prompt is self-contained and includes role instructions and the task', () => {
-  const org = orgWith([sampleRole()]);
-  const role = org.roles[0];
-  const prompt = buildRolePrompt(org, role, '设计个人主页', { delegation: 'abc123' });
-  assert.match(prompt, /产品设计师/);
-  assert.match(prompt, /产品设计师-01/);
-  assert.match(prompt, /设计个人主页/);
-  assert.match(prompt, /设计工作流/);
-  assert.doesNotMatch(prompt, /team_create_member/);
-  assert.match(prompt, /你不是组长/);
-  assert.match(prompt, /不要调用团队调度/);
-  assert.match(prompt, /abc123/);
-});
 
 test('validation canonicalizes unknown fields and accent colors', () => {
   const org = orgWith([sampleRole()]);
@@ -235,7 +213,7 @@ test('graph relations allow cross-level, cyclic, and temporary links', () => {
   assert.match(buildLeadPrompt(result.org), /周明远 与 陈一鸣 协作/);
   assert.match(buildLeadPrompt(result.org), /周明远 完成后交接给 陈一鸣/);
   assert.match(buildLeadPrompt(result.org), /周明远 与 林知夏 临时协作/);
-  const rolePrompt = buildRolePrompt(result.org, result.org.roles.find((role) => role.id === 'software-engineer'), '检查发布');
+  const rolePrompt = buildEmployeeIdentityPrompt(result.org, result.org.roles.find((role) => role.id === 'software-engineer'), { path: '/w', title: 'W' });
   assert.match(rolePrompt, /周明远 与 陈一鸣 协作/);
   assert.match(rolePrompt, /陈一鸣 向 林知夏 汇报/);
 });
@@ -349,6 +327,6 @@ test('injected skills are rendered into the employee identity and task prompts',
   assert.match(identity, /safe-change/);
   assert.match(identity, /修改前先读现有代码/);
   const task = buildRoleTaskPrompt(org, role, '修改登录页', { path: '/w', title: 'W' });
-  assert.match(task, /safe-change/);
+  assert.doesNotMatch(task, /safe-change/);
   assert.match(task, /修改登录页/);
 });

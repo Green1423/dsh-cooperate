@@ -1,0 +1,39 @@
+{
+  "relation": {
+    "reports": "{{from}} 向 {{to}} 汇报{{tail}}",
+    "handoff": "{{from}} 完成后交接给 {{to}}{{tail}}",
+    "temporary": "{{from}} 与 {{to}} 临时协作{{tail}}，{{expiry}}{{expired}}",
+    "collaborates": "{{from}} 与 {{to}} 协作{{tail}}",
+    "label": "（{{label}}）",
+    "expiry": "至 {{date}}",
+    "expired": "（已过期）",
+    "expiryManual": "手动移除前有效"
+  },
+  "roster": {
+    "lead": "- {{status}} | id: {{id}} | {{name}} | {{title}} | 级别: {{level}} | 汇报给: {{manager}} | 思考强度: {{effort}} | 职权: {{authority}} | 边界: {{boundaries}}",
+    "teamDesign": "- id: {{id}} | {{name}} | {{title}} | 级别: {{level}} | 思考强度: {{effort}} | 汇报: {{manager}}"
+  },
+  "skills": {
+    "entry": "### {{name}}{{description}}{{instructions}}"
+  },
+  "_placeholders": {
+    "from": "关系起点名称",
+    "to": "关系终点名称",
+    "tail": "关系标签后缀",
+    "label": "关系自定义标签",
+    "expiry": "临时关系有效时间文本",
+    "date": "格式化日期时间",
+    "expired": "过期标记",
+    "status": "成员启用/停用状态",
+    "id": "角色 id",
+    "name": "成员姓名",
+    "title": "成员职位",
+    "level": "成员级别",
+    "effort": "思考强度",
+    "manager": "直属上级",
+    "authority": "职权摘要",
+    "boundaries": "边界摘要",
+    "description": "技能描述（含尾随换行）",
+    "instructions": "技能正文"
+  }
+}
