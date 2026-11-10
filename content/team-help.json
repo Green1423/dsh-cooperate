@@ -72,7 +72,7 @@
       "roles": [
         "lead"
       ],
-      "purpose": "给现有成员写入具体职权和边界",
+      "purpose": "给现有成员写入具体职权并通知其会话一次",
       "args": "role/authority/boundaries/reason",
       "when": "角色职权为空或过于泛化时"
     },

@@ -860,7 +860,7 @@ function promptText(value) {
   return Array.isArray(value) ? value.join('\n') : String(value ?? '');
 }
 
-function renderPrompt(template, values) {
+export function renderPrompt(template, values) {
   return promptText(template).replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_match, key) => (
     Object.prototype.hasOwnProperty.call(values, key) ? promptText(values[key]) : ''
   ));
@@ -985,8 +985,6 @@ export function buildRoleTaskPrompt(org, role, task, workspace) {
     level: levelLabel(role.level),
     effort: role.effort || 'low',
     workspacePath: workspace?.path ?? promptData.text.workspacePathFallback,
-    authority: roleAuthority(role),
-    boundaries: roleBoundaries(role),
     taskText,
     reportRule: report ? promptData.text.reportRule : promptData.text.normalReportRule,
     output: report ? promptData.text.reportOutput : promptData.text.normalOutput,

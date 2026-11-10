@@ -214,8 +214,6 @@
   "task": [
     "ROLE={{roleName}} | {{roleTitle}} | {{level}} | effort={{effort}}",
     "WORKSPACE={{workspacePath}}",
-    "AUTHORITY={{authority}}",
-    "BOUNDARY={{boundaries}}",
     "TASK",
     "{{taskText}}",
     "RULES",
@@ -420,5 +418,12 @@
     "title": "工作区标题",
     "path": "工作区路径",
     "id": "委派编号"
-  }
+  },
+  "scopeUpdate": [
+    "## 职权更新",
+    "- 可决定/负责：{{authority}}",
+    "- 禁止/需升级：{{boundaries}}",
+    "",
+    "后续任务以此为准；本条只更新边界，无需执行工作或回复摘要。"
+  ]
 }
