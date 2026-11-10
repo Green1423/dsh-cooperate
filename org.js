@@ -92,6 +92,8 @@ function defaultTemplate(template) {
     accent: template.accent,
     responsibilities: template.responsibilities,
     instructions: template.instructions,
+    authority: template.authority || '',
+    boundaries: template.boundaries || '',
     level: template.level ?? 'member',
     builtin: true,
   };
@@ -423,12 +425,18 @@ export function validateOrg(input) {
       if (responsibilities.length > 400) pushIssue(issues, `${base}.responsibilities`, '模板职责不能超过 400 个字符');
       const instructions = text(rawTemplate.instructions);
       if (instructions.length > 4000) pushIssue(issues, `${base}.instructions`, '模板工作准则不能超过 4000 个字符');
+      const authority = text(rawTemplate.authority);
+      const boundaries = text(rawTemplate.boundaries);
+      if (authority.length > 300) pushIssue(issues, `${base}.authority`, '模板职权不能超过 300 个字符');
+      if (boundaries.length > 300) pushIssue(issues, `${base}.boundaries`, '模板边界不能超过 300 个字符');
       templates.push({
         id,
         title,
         accent,
         responsibilities,
         instructions,
+        authority,
+        boundaries,
         level,
         builtin: rawTemplate.builtin === true,
       });
@@ -828,7 +836,11 @@ function standardBoundaries(role) {
 }
 
 export function roleAuthority(role) {
-  return String(role?.authority ?? '').trim() || standardAuthority(role);
+  const own = String(role?.authority ?? '').trim();
+  if (own !== '') return own;
+  const base = standardAuthority(role);
+  const scope = clip(role?.responsibilities, 120);
+  return scope === '' ? base : `${base} 具体负责：${scope}`;
 }
 
 export function roleBoundaries(role) {

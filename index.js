@@ -1661,6 +1661,8 @@ export function apply(ctx) {
           title: { type: 'string', description: 'role_template 的职位名称（1–24 字）。' },
           name: { type: 'string', description: 'org_pattern 的模式名称（1–40 字）。' },
           responsibilities: { type: 'string', description: 'role_template 的职责摘要。' },
+          authority: { type: 'string', description: 'role_template 的具体职权；role_template 必填。' },
+          boundaries: { type: 'string', description: 'role_template 的禁止边界；role_template 必填。' },
           instructions: { type: 'string', description: 'role_template 的身份提示词/工作准则。' },
           level: { type: 'string', enum: ['member', 'captain'], description: 'role_template 的级别，默认 member。' },
           accent: { type: 'string', description: 'role_template 的六位十六进制强调色。' },
@@ -1704,9 +1706,13 @@ export function apply(ctx) {
         if (type === 'role_template') {
           const title = typeof args.title === 'string' ? args.title.trim() : '';
           const responsibilities = typeof args.responsibilities === 'string' ? args.responsibilities.trim() : '';
+          const authority = typeof args.authority === 'string' ? args.authority.trim() : '';
+          const boundaries = typeof args.boundaries === 'string' ? args.boundaries.trim() : '';
           const instructions = typeof args.instructions === 'string' ? args.instructions.trim() : '';
           if (title.length < 1 || title.length > 24) throw new Error('职位名称需要 1–24 个字符。');
           if (responsibilities.length < 1 || responsibilities.length > 1000) throw new Error('职责需要 1–1000 个字符。');
+          if (authority.length < 2 || authority.length > 300) throw new Error('具体职权需要 2–300 个字符。');
+          if (boundaries.length < 2 || boundaries.length > 300) throw new Error('禁止边界需要 2–300 个字符。');
           if (instructions.length < 1 || instructions.length > 4000) throw new Error('工作准则需要 1–4000 个字符。');
           if (ROLE_TEMPLATES.some((template) => template.title === title) || store.current.templates.some((template) => template.title === title)) {
             throw new Error(`职位模板「${title}」已存在。`);
@@ -1717,6 +1723,8 @@ export function apply(ctx) {
             title,
             accent,
             responsibilities,
+            authority,
+            boundaries,
             instructions,
             level: args.level === 'captain' ? 'captain' : 'member',
             builtin: false,
@@ -3496,30 +3504,40 @@ export function apply(ctx) {
             {
               id: captainId, name: names.captain, title: '软件工程师', level: 'captain', reportsTo: manager,
               enabled: true, accent: palette[current.roles.length % palette.length], model: chosenModel,
+              authority: `可决定「${module}」模块的接口、文件边界、任务拆分、合并和验收；可要求队员澄清。`,
+              boundaries: `不可跳过独立测试/审核/安全，不可自行提交 GitHub，不可修改未分配文件。`,
               responsibilities: `负责「${module}」模块组的接口约定、文件边界、拆分、并行实现、集成和验收。`,
               instructions: `你是「${module}」模块组的软件组长。先与组长确认目标、接口、文件边界和验收标准，再把实现、测试、审核优化、文档分给本组直属成员；你负责集成和最终质量，不能跳过软件测试、代码审核、安全审核和 GitHub 提交。模块边界：${files}`,
             },
             {
               id: `member-${randomUUID().slice(0, 8)}`, name: names.engineer, title: '软件工程师', level: 'member', reportsTo: captainId,
               enabled: true, accent: palette[(current.roles.length + 1) % palette.length], model: chosenModel,
+              authority: `可在「${module}」模块分配给你的文件和接口内决定实现细节并交付。`,
+              boundaries: `不可修改共享文件，不可审批自己的代码，不可提交 GitHub，不可跳过测试。`,
               responsibilities: `作为「${module}」模块组的特化软件工程师，负责 ${specialty} 的实现。`,
               instructions: `你是「${module}」模块组的特化软件工程师，专长：${specialty}。只修改组内约定给你的文件/模块；实现完成后交给本组软件测试师、代码审核优化工程师和文档师，按组长安排并行。不要承担正式测试、审核、文档或提交。`,
             },
             {
               id: `member-${randomUUID().slice(0, 8)}`, name: names.tester, title: '软件测试师', level: 'member', reportsTo: captainId,
               enabled: true, accent: palette[(current.roles.length + 2) % palette.length], model: chosenModel,
+              authority: `可对「${module}」执行独立测试、记录缺陷并阻断未通过发布。`,
+              boundaries: `不可修改业务代码，不可写正式报告，不可用自测替代独立测试。`,
               responsibilities: `独立负责「${module}」模块的软件测试、回归和发布验证。`,
               instructions: `你是「${module}」模块组的软件测试师。除自动化测试外，必须模拟真实用户使用：从首次进入开始走完该模块的核心用户旅程、导航、错误恢复、权限和移动/触屏场景，做探索性测试并记录体验摩擦；缺陷必须可复现并附证据；不得修改业务代码，不得写正式报告；可阻断未通过发布。`,
             },
             {
               id: `member-${randomUUID().slice(0, 8)}`, name: names.optimizer, title: '代码审核优化工程师', level: 'member', reportsTo: captainId,
               enabled: true, accent: palette[(current.roles.length + 3) % palette.length], model: chosenModel,
+              authority: `可审核「${module}」变更并给出阻断/建议/可接受结论，可要求实现者修复。`,
+              boundaries: `不可重写整份实现，不可跳过安全审核或自行提交 GitHub。`,
               responsibilities: `独立审核「${module}」模块的代码与优化建议。`,
               instructions: `你是「${module}」模块组的代码审核优化工程师。独立审核该模块变更，逐项给出阻断/建议/可接受和文件行号；不替代实现者重写整份代码，不提交 GitHub。`,
             },
             {
               id: `member-${randomUUID().slice(0, 8)}`, name: names.docs, title: '文档师', level: 'member', reportsTo: captainId,
               enabled: true, accent: palette[(current.roles.length + 4) % palette.length], model: chosenModel,
+              authority: `可整理「${module}」面向人的 README、使用/架构说明并要求实现者澄清。`,
+              boundaries: `不可改变代码行为或接口，不可阻塞测试/审核/提交，AI 注释和交接由需要的人维护。`,
               responsibilities: `负责「${module}」模块的 README、使用/架构说明和必要注释。`,
               instructions: `你是「${module}」模块组的文档师。实现完成后整理该模块的 README、使用/架构说明和必要代码注释；只改文档和注释，不改代码行为；语义不明向本组工程师/组长确认；文档完成后交代码审核。`,
             },
@@ -3567,12 +3585,84 @@ export function apply(ctx) {
     };
   }
 
+  function createScopeTool(employee) {
+    const { store } = employee;
+    return {
+      name: 'team_set_scope',
+      description: 'Lead only. Set one existing member concrete authority and boundaries so the member identity states what they may decide and what is forbidden. Use when authority is empty or generic.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          role: { type: 'string', description: '成员 id/姓名/职位。' },
+          authority: { type: 'string', description: '具体可决定/负责的事项，2–300 字。' },
+          boundaries: { type: 'string', description: '明确禁止或需升级的事项，2–300 字。' },
+          reason: { type: 'string', description: '为什么调整权限；必填。' },
+        },
+        required: ['role', 'authority', 'boundaries', 'reason'],
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            roleId: { type: 'string' },
+            roleName: { type: 'string' },
+            summary: { type: 'string' },
+          },
+          required: ['roleId', 'roleName', 'summary'],
+        },
+        render(_args, value) {
+          return [{ type: 'text', text: value.summary }];
+        },
+      },
+      isConcurrencySafe: () => false,
+      presentCall(args) {
+        return { card: 'generic', title: `调整职权：${args.role ?? ''}`, kind: 'other', rawInput: args };
+      },
+      async execute(args, exec) {
+        if (disposed) throw new Error('Agent Org 插件已卸载');
+        const caller = exec.agent;
+        if (caller === undefined) throw new Error('team_set_scope 需要一个组长会话');
+        await store.refresh();
+        if (!store.configured || !store.current.enabled) throw new Error('协作组尚未启用，不能调整职权。');
+        if (store.current.lead.sessionId !== caller.session.id) throw new Error('只有组长可以调整成员职权。');
+        const role = findRole(store.current, args.role);
+        if (role === null) throw new Error(`找不到成员“${args.role ?? ''}”`);
+        const authority = typeof args.authority === 'string' ? args.authority.trim() : '';
+        const boundaries = typeof args.boundaries === 'string' ? args.boundaries.trim() : '';
+        const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
+        if (authority.length < 2 || authority.length > 300) throw new Error('具体职权需要 2–300 个字符');
+        if (boundaries.length < 2 || boundaries.length > 300) throw new Error('禁止边界需要 2–300 个字符');
+        if (reason.length < 2) throw new Error('必须填写 reason');
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const current = store.current;
+          const roles = current.roles.map((item) => item.id === role.id ? { ...item, authority, boundaries } : item);
+          try {
+            await store.save(current.revision, { ...current, roles });
+            break;
+          } catch (error) {
+            if (error instanceof OrgRevisionError && attempt < 2) continue;
+            throw error;
+          }
+        }
+        const summary = `已更新「${role.title} · ${role.name}」的具体职权和边界。`;
+        try {
+          await appendAudit(store, { kind: 'personnel', action: 'set_scope', actor: store.current.lead.label, roleId: role.id, roleName: role.name, reason, summary });
+        } catch (error) {
+          console.warn('[agent-org] could not append scope audit:', error);
+        }
+        return { roleId: role.id, roleName: role.name, summary };
+      },
+    };
+  }
+
   function createHrTool(employee) {
     const { store, workspace } = employee;
     return {
       name: 'team_create_member',
       description:
-        'Lead only. Create one new team member, write the member identity prompt, assign a manager, and initialize the member session in the current workspace. ' +
+        'Lead only. Create one new team member with concrete authority and boundaries, write the member identity prompt, assign a manager, and initialize the member session in the current workspace. ' +
         'For multiple people in the same position, create one captain and member-level teammates. Do not use this to edit existing members.',
       parameters: {
         type: 'object',
@@ -3583,13 +3673,15 @@ export function apply(ctx) {
           level: { type: 'string', enum: ['captain', 'member'], description: '同一岗位可选队长 captain 或队员 member；默认 member。' },
           responsibilities: { type: 'string', description: '成员的职责范围。' },
           instructions: { type: 'string', description: '写入成员会话的身份提示词和工作准则。' },
+          authority: { type: 'string', description: '该成员具体可决定/负责的事项，例如文件/模块范围、接口、验收或审批权；不能只写泛化职责。' },
+          boundaries: { type: 'string', description: '该成员明确禁止或需升级的事项。' },
           reportsTo: { type: 'string', description: '可选汇报对象：默认组长；可写 lead/组长，或现有成员 id/姓名/职位。' },
           provider: { type: 'string', description: '新成员模型 provider；创建前必须实时选择，推荐 opencode-go。' },
           model: { type: 'string', description: '新成员模型 id；创建前必须实时选择，推荐 deepseek-v4.1-flash。' },
           reasoningEffort: { type: 'string', description: '可选：该模型支持的思考强度。' },
           reason: { type: 'string', description: '为什么需要新增这个岗位/成员；必填。' },
         },
-        required: ['title', 'responsibilities', 'instructions', 'provider', 'model', 'reason'],
+        required: ['title', 'responsibilities', 'instructions', 'authority', 'boundaries', 'provider', 'model', 'reason'],
       },
       output: {
         schema: {
@@ -3625,11 +3717,15 @@ export function apply(ctx) {
         const title = typeof args.title === 'string' ? args.title.trim() : '';
         const responsibilities = typeof args.responsibilities === 'string' ? args.responsibilities.trim() : '';
         const instructions = typeof args.instructions === 'string' ? args.instructions.trim() : '';
+        const authority = typeof args.authority === 'string' ? args.authority.trim() : '';
+        const boundaries = typeof args.boundaries === 'string' ? args.boundaries.trim() : '';
         if (title.length < 1 || title.length > 24) throw new Error('职位需要 1–24 个字符');
         if (responsibilities.length < 1) throw new Error('成员职责不能为空');
         if (instructions.length < 1) throw new Error('成员身份提示词不能为空');
         if (responsibilities.length > 1000) throw new Error('成员职责不能超过 1000 个字符');
         if (instructions.length > 4000) throw new Error('身份提示词不能超过 4000 个字符');
+        if (authority.length < 2 || authority.length > 300) throw new Error('具体职权需要 2–300 个字符');
+        if (boundaries.length < 2 || boundaries.length > 300) throw new Error('禁止边界需要 2–300 个字符');
         const level = typeof args.level === 'string' && ROLE_LEVELS.includes(args.level.trim()) ? args.level.trim() : 'member';
         const name = typeof args.name === 'string' && args.name.trim() !== ''
           ? args.name.trim()
@@ -3658,6 +3754,8 @@ export function apply(ctx) {
             accent: palette[current.roles.length % palette.length],
             responsibilities,
             instructions,
+            authority,
+            boundaries,
             model: chosenModel,
             sessionId: null,
           };
@@ -3933,6 +4031,7 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createEffortTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createActiveTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createHrTool({ store, workspace })));
+      disposers.push(agent.ctx.tools.register(createScopeTool({ store })));
       disposers.push(agent.ctx.tools.register(createModuleGroupTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createFireTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createSkillSearchTool({ store, workspace })));

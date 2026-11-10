@@ -210,7 +210,7 @@ with its own onboarding flow.
   firing, parking/restoring, effort changes, and relation changes.
 - **Editable natural-language content** — role templates, organization
   patterns, and per-role authority/boundary/workflow playbooks live in
-  `content/*.json`; prompt templates live in `content/prompts.json`. UI copy
+  `content/*.json`; prompt templates live in `content/prompts.json`. Role creation requires concrete `authority` and `boundaries`; `team_set_scope` updates existing roles. UI copy
   lives in `locale/*.json`. The lead can persist a learned role or org pattern
   with `team_save_knowledge`.
 - **Open-source-first research** — before presenting a plan, the lead must search

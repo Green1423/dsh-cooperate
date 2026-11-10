@@ -27,7 +27,7 @@
         "lead"
       ],
       "purpose": "把新职位/架构写入 JSON",
-      "args": "type/name或title/.../reason",
+      "args": "type/name或title+responsibilities+authority+boundaries+instructions/reason",
       "when": "出现可复用知识时"
     },
     {
@@ -63,9 +63,18 @@
       "roles": [
         "lead"
       ],
-      "purpose": "创建成员并在创建时选模型",
-      "args": "title/responsibilities/instructions/provider/model/reason",
+      "purpose": "创建成员并写入具体职权、边界和模型",
+      "args": "title/responsibilities/instructions/authority/boundaries/provider/model/reason",
       "when": "缺岗位时"
+    },
+    {
+      "name": "team_set_scope",
+      "roles": [
+        "lead"
+      ],
+      "purpose": "给现有成员写入具体职权和边界",
+      "args": "role/authority/boundaries/reason",
+      "when": "角色职权为空或过于泛化时"
     },
     {
       "name": "team_create_module_group",
@@ -202,6 +211,7 @@
   ],
   "notes": [
     "HR 角色已移除；组长直接创建成员或模块组。",
+    "已有角色职权为空或泛化时，用 team_set_scope 写具体文件/模块/验收权，不要只写通用职责。",
     "业务需求先方案、后执行；批准前不得委派、建人、改模型/关系或执行。",
     "给方案前先做开源调研，方案中写清候选、许可证、维护状态和采用理由。",
     "模型默认优先 opencode-go/deepseek-v4.1-flash；切换前核对实时 provider/model/effort 和范围。",

@@ -3,11 +3,12 @@
 These JSON files are the editable natural-language catalog for the plugin.
 They are loaded at Host startup. Edit them directly, or let the lead call
 `team_save_knowledge` to append a new role template / organization pattern.
+Role creation requires concrete `authority` and `boundaries`; `team_set_scope` updates existing roles.
 
 ## Categories
 
 - `role-templates.json` — position templates used by the organization editor:
-  `title`, `responsibilities`, `instructions`, `level`, `accent`.
+  `title`, `responsibilities`, `authority`, `boundaries`, `instructions`, `level`, `accent`.
 - `org-patterns.json` — reusable organization shapes:
   `name`, `fit`, `shape`, `avoid`.
 - `role-playbooks.json` — per-role authority, boundaries, and mandatory workflow,

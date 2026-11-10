@@ -420,7 +420,7 @@ test('apply installs lead policy and a waiting team_assign tool', async () => {
     assert.equal(root.captured.sections.length, 2);
     assert.equal(root.captured.sections[0].interpolate, false);
     assert.match(root.captured.sections[0].text(), /尚未启用/);
-    assert.equal(root.captured.tools.length, 19);
+    assert.equal(root.captured.tools.length, 20);
     assert.equal(root.captured.tools[0].name, 'team_assign');
     assert.equal(root.captured.tools[0].isConcurrencySafe(), true);
     assert.equal(root.captured.tools[1].name, 'team_relation');
@@ -856,6 +856,8 @@ test('lead creates a member, writes its identity prompt, and initializes its ses
         reportsTo: '组长',
         provider: 'deepseek',
         model: 'deepseek-flash',
+        authority: '可在 src/feature 内实现并交付，可提交实现自检结果',
+        boundaries: '不可修改共享文件，不可批准自己的代码',
         reason: '需要新增软件工程师承担实现',
       },
       { agent: lead.agent, signal: new AbortController().signal },
@@ -870,6 +872,8 @@ test('lead creates a member, writes its identity prompt, and initializes its ses
     assert.equal(role.title, '软件工程师');
     assert.equal(role.reportsTo, 'lead');
     assert.match(role.instructions, /身份|软件工程师/);
+    assert.equal(role.authority, '可在 src/feature 内实现并交付，可提交实现自检结果');
+    assert.equal(role.boundaries, '不可修改共享文件，不可批准自己的代码');
   } finally {
     if (previous === undefined) delete process.env.DSH_AGENT_ORG_FILE;
     else process.env.DSH_AGENT_ORG_FILE = previous;
@@ -1261,6 +1265,8 @@ test('team_create_member reports a clear error when the user-side session cannot
           instructions: '你是合规专员，只输出合规结论和证据。',
           provider: 'deepseek',
           model: 'deepseek-flash',
+          authority: '可审查合规风险并给出结论',
+          boundaries: '不可修改业务代码，不可批准发布',
           reason: '需要独立合规检查岗位',
         },
         { agent: lead.agent, signal: new AbortController().signal },

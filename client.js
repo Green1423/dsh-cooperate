@@ -240,6 +240,8 @@ window.__ModuleLoader__.load({
       templateName: '模板名称',
       templateNamePlaceholder: '例如：数据工程师',
       templateResponsibilities: '模板职责',
+      templateAuthority: '模板具体职权',
+      templateBoundaries: '模板禁止边界',
       templateInstructions: '模板工作准则',
       templateSave: '保存模板',
       templateSaving: '正在保存…',
@@ -618,6 +620,8 @@ window.__ModuleLoader__.load({
       templateName: 'Template name',
       templateNamePlaceholder: 'e.g. Data engineer',
       templateResponsibilities: 'Template responsibilities',
+      templateAuthority: 'Template authority',
+      templateBoundaries: 'Template boundaries',
       templateInstructions: 'Template working instructions',
       templateSave: 'Save template',
       templateSaving: 'Saving…',
@@ -4339,10 +4343,10 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
 
     function TemplateDialog({ org, saving, error, onPick, onBlank, onCreate, onClose, t }) {
       const [mode, setMode] = React.useState('list');
-      const [draft, setDraft] = React.useState({ title: '', level: 'member', responsibilities: '', instructions: '', accent: '#7C6CFF' });
+      const [draft, setDraft] = React.useState({ title: '', level: 'member', responsibilities: '', authority: '', boundaries: '', instructions: '', accent: '#7C6CFF' });
       const templates = Array.isArray(org?.templates) ? org.templates : [];
       const colors = ['#7C6CFF', '#2E9E7B', '#D9822B', '#3B82F6', '#D9578A', '#8A6A4B'];
-      const reset = () => setDraft({ title: '', level: 'member', responsibilities: '', instructions: '', accent: '#7C6CFF' });
+      const reset = () => setDraft({ title: '', level: 'member', responsibilities: '', authority: '', boundaries: '', instructions: '', accent: '#7C6CFF' });
       const save = async () => {
         const title = draft.title.trim();
         if (title.length < 1 || title.length > 24 || saving) return;
@@ -4351,6 +4355,8 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
             title,
             level: draft.level,
             responsibilities: draft.responsibilities.trim(),
+            authority: draft.authority.trim(),
+            boundaries: draft.boundaries.trim(),
             instructions: draft.instructions.trim(),
             accent: draft.accent,
           });
@@ -4460,6 +4466,28 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
             maxLength: 400,
             value: draft.responsibilities,
             onChange: (event) => setDraft((previous) => ({ ...previous, responsibilities: readText(event) })),
+          }),
+        ),
+        h(
+          Field,
+          { label: t('templateAuthority'), htmlFor: 'ao-template-authority' },
+          h('input', {
+            id: 'ao-template-authority',
+            className: 'ao_input',
+            maxLength: 300,
+            value: draft.authority,
+            onChange: (event) => setDraft((previous) => ({ ...previous, authority: readText(event) })),
+          }),
+        ),
+        h(
+          Field,
+          { label: t('templateBoundaries'), htmlFor: 'ao-template-boundaries' },
+          h('input', {
+            id: 'ao-template-boundaries',
+            className: 'ao_input',
+            maxLength: 300,
+            value: draft.boundaries,
+            onChange: (event) => setDraft((previous) => ({ ...previous, boundaries: readText(event) })),
           }),
         ),
         h(
@@ -5185,8 +5213,8 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
           title: template.title,
           level: template.level === 'captain' ? 'captain' : 'member',
           effort: 'low',
-          authority: '',
-          boundaries: '',
+          authority: template.authority || '',
+          boundaries: template.boundaries || '',
           reportsTo: 'lead',
           enabled: true,
           accent: template.accent || '#7C6CFF',
@@ -5224,6 +5252,8 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
           level: fields.level === 'captain' ? 'captain' : 'member',
           accent: fields.accent || '#7C6CFF',
           responsibilities: String(fields.responsibilities ?? '').trim(),
+          authority: String(fields.authority ?? '').trim(),
+          boundaries: String(fields.boundaries ?? '').trim(),
           instructions: String(fields.instructions ?? '').trim(),
           builtin: false,
         };

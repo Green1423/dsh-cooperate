@@ -151,10 +151,15 @@ test('lead prompt reports live status, hierarchy, and the no-self-edit boundary'
 });
 
 
-test('designer identity includes the design workflow', () => {
-  const org = orgWith([sampleRole()]);
-  const role = org.roles[0];
+test('designer identity includes concrete authority, boundaries, and workflow', () => {
+  const role = sampleRole({
+    authority: '可决定首页信息架构、筛选交互和设计验收',
+    boundaries: '不可改业务代码，不可自行批准发布',
+  });
+  const org = orgWith([role]);
   const prompt = buildEmployeeIdentityPrompt(org, role, { path: '/workspace', title: 'demo' });
+  assert.match(prompt, /可决定首页信息架构、筛选交互和设计验收/);
+  assert.match(prompt, /不可改业务代码，不可自行批准发布/);
   assert.match(prompt, /设计工作流/);
   assert.match(prompt, /专职设计师/);
 });
