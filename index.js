@@ -441,6 +441,7 @@ export function apply(ctx) {
 
   const installations = new Map();
   const installing = new Set();
+  const captainToolsInstalled = new WeakSet();
   const stores = new Map();
   const activeActivations = new Set();
   const employeeSessionIds = new Set();
@@ -3820,9 +3821,31 @@ export function apply(ctx) {
     };
   }
 
+  function ensureCaptainTools(agent, employee) {
+    if (agent === undefined || employee?.role === undefined || captainToolsInstalled.has(agent)) return;
+    const disposers = installations.get(agent);
+    if (!Array.isArray(disposers)) return;
+    const current = employee.store?.current;
+    const role = current?.roles?.find((item) => item.id === employee.role.id) ?? employee.role;
+    const hasReports = (current?.roles ?? []).some((item) => item.reportsTo === role.id && item.enabled !== false);
+    if (role.level !== 'captain' && !hasReports) return;
+    captainToolsInstalled.add(agent);
+    disposers.push(agent.ctx.tools.register(createMemberAssignTool(employee)));
+    disposers.push(agent.ctx.tools.register(createSkillSearchTool(employee)));
+    disposers.push(agent.ctx.tools.register(createSkillInjectTool(employee)));
+    disposers.push(agent.ctx.tools.register(createTeamHelpTool('captain')));
+    disposers.push(agent.ctx.tools.register(createLeadModelTool(employee)));
+    disposers.push(agent.ctx.tools.register(createEffortTool(employee)));
+    disposers.push(agent.ctx.tools.register(createReportFailureTool(employee)));
+  }
+
   async function installEmployeeTools(agent, employee) {
     if (employee?.role === undefined) return;
-    if (disposed || installations.has(agent) || installing.has(agent)) return;
+    if (disposed || installing.has(agent)) return;
+    if (installations.has(agent)) {
+      ensureCaptainTools(agent, employee);
+      return;
+    }
     installing.add(agent);
     await applyRoleModelAndEffort(agent, employee.role);
     try {
@@ -3845,31 +3868,23 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createRelationTool(employee)));
       disposers.push(agent.ctx.tools.register(createMyReportsTool(employee)));
       disposers.push(agent.ctx.tools.register(createHelpRequestTool(employee)));
-      const hasReports = (employee.store?.current?.roles ?? []).some((role) => role.reportsTo === employee.role.id);
-      if (employee.role.level === 'captain' || hasReports) {
-        disposers.push(agent.ctx.tools.register(createMemberAssignTool(employee)));
-        disposers.push(agent.ctx.tools.register(createSkillSearchTool(employee)));
-        disposers.push(agent.ctx.tools.register(createSkillInjectTool(employee)));
-        disposers.push(agent.ctx.tools.register(createTeamHelpTool('captain')));
-        disposers.push(agent.ctx.tools.register(createLeadModelTool(employee)));
-        disposers.push(agent.ctx.tools.register(createEffortTool(employee)));
-        disposers.push(agent.ctx.tools.register(createReportFailureTool(employee)));
-      }
       installations.set(agent, disposers);
+      ensureCaptainTools(agent, employee);
     } finally {
       installing.delete(agent);
     }
   }
 
   async function installLead(agent) {
-    if (disposed || installations.has(agent) || installing.has(agent)) return;
-    if (agent?.session?.header?.origin === 'subagent' || (agent?.session?.header?.delegationDepth ?? 0) > 0) return;
+    if (disposed || installing.has(agent)) return;
     const employee = await resolveEmployeeContext(agent);
     if (employee?.pending === true) return;
     if (employee?.role !== undefined) {
       await installEmployeeTools(agent, employee);
       return;
     }
+    if (agent?.session?.header?.origin === 'subagent' || (agent?.session?.header?.delegationDepth ?? 0) > 0) return;
+    if (installations.has(agent)) return;
 
     installing.add(agent);
     const disposers = [];
