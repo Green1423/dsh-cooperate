@@ -1,0 +1,39 @@
+{
+  "name": "@local/dsh-agent-org",
+  "version": "1.8.2",
+  "private": true,
+  "description": "Workspace-scoped multi-agent organization for DSH: lead-first onboarding, direct hiring by the lead, named persistent employee sessions with injected roles, draggable relationship graph with temporary links, and archived-session lead handoff.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "org.js",
+    "org-store.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "icon": "./icon.svg",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

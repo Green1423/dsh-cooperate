@@ -1,0 +1,3 @@
+- insert:
+    - id: agent-org
+      name: '@local/dsh-agent-org'
