@@ -212,7 +212,6 @@
     "角色初始化完成。只返回 {\"status\":\"ready\"}，不要执行任务，不要调用调度工具。"
   ],
   "task": [
-    "ROLE={{roleName}} | {{roleTitle}} | {{level}} | effort={{effort}}",
     "WORKSPACE={{workspacePath}}",
     "- 所有文件和命令都以该工作区为根；修改和报告必须给绝对路径，不能引用其他工作区。",
     "- 委派或交接给下级时，必须把 workspace 和具体 files 写进任务。",

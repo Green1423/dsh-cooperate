@@ -299,7 +299,7 @@ test('role bootstrap and follow-up task prompts preserve employee identity', () 
   assert.match(bootstrap, /职位：产品设计师/);
   assert.match(bootstrap, /角色初始化/);
   const task = buildRoleTaskPrompt(org, role, '安排入职', workspace);
-  assert.match(task, /产品设计师-01/);
+  assert.doesNotMatch(task, /ROLE=/);
   assert.match(task, /安排入职/);
   assert.match(task, /紧凑 JSON/);
   assert.match(task, /"status":"ok\|blocked\|failed"/);

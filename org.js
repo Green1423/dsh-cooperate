@@ -984,10 +984,6 @@ export function buildRoleTaskPrompt(org, role, task, workspace) {
   const taskText = String(task ?? '').trim();
   const report = roleKind(role) === 'report';
   return renderPrompt(promptData.task, {
-    roleName: role.name,
-    roleTitle: role.title,
-    level: levelLabel(role.level),
-    effort: role.effort || 'low',
     workspacePath: workspace?.path ?? promptData.text.workspacePathFallback,
     taskText,
     reportRule: report ? promptData.text.reportRule : promptData.text.normalReportRule,
