@@ -9,6 +9,7 @@ import {
   buildRoleBootstrapPrompt,
   buildMidprojectReportPrompt,
   buildRoleTaskPrompt,
+  buildScopeUpdatePrompt,
   createDefaultOrg,
   migrateLegacyHr,
   findRole,
@@ -165,6 +166,9 @@ test('designer identity includes concrete authority, boundaries, and workflow', 
   const task = buildRoleTaskPrompt(org, role, '交付首页', { path: '/workspace', title: 'demo' });
   assert.doesNotMatch(task, /AUTHORITY=/);
   assert.doesNotMatch(task, /BOUNDARY=/);
+  const scope = buildScopeUpdatePrompt('可决定首页信息架构', '不可改业务代码');
+  assert.match(scope, /可决定首页信息架构/);
+  assert.match(scope, /不可改业务代码/);
 });
 
 

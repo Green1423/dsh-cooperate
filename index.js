@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { OrgValidationError, ORG_PATTERNS, ROLE_LEVELS, ROLE_TEMPLATES, buildEmployeeIdentityPrompt, buildLeadPrompt, buildRoleBootstrapPrompt, buildMidprojectReportPrompt, buildRoleTaskPrompt, buildTeamDesignPrompt, createDefaultOrg, findRole, normalizeEffort, publicOrg, renderPrompt } from './org.js';
+import { OrgValidationError, ORG_PATTERNS, ROLE_LEVELS, ROLE_TEMPLATES, buildEmployeeIdentityPrompt, buildLeadPrompt, buildRoleBootstrapPrompt, buildMidprojectReportPrompt, buildRoleTaskPrompt, buildTeamDesignPrompt, createDefaultOrg, findRole, normalizeEffort, publicOrg, buildScopeUpdatePrompt } from './org.js';
 import { OrgRevisionError, createOrgStore } from './org-store.js';
 import { createExperienceStore } from './experience.js';
 import teamHelpData from './content/team-help.json' with { type: 'json' };
@@ -3609,6 +3609,7 @@ export function apply(ctx) {
             roleId: { type: 'string' },
             roleName: { type: 'string' },
             sessionNotified: { type: 'boolean' },
+            notificationError: { type: 'string' },
             summary: { type: 'string' },
           },
           required: ['roleId', 'roleName', 'sessionNotified', 'summary'],
@@ -3648,6 +3649,7 @@ export function apply(ctx) {
           }
         }
         let sessionNotified = false;
+        let notificationError = '';
         if (typeof role.sessionId === 'string' && role.sessionId !== '') {
           try {
             let agent = ctx.agents.get(role.sessionId);
@@ -3661,7 +3663,7 @@ export function apply(ctx) {
               try {
                 const result = await runAgentTurn(
                   agent,
-                  renderPrompt(promptData.scopeUpdate, { authority, boundaries }),
+                  buildScopeUpdatePrompt(authority, boundaries),
                   controller.signal,
                 );
                 sessionNotified = result.reason?.kind === 'completed';
@@ -3670,16 +3672,17 @@ export function apply(ctx) {
               }
             }
           } catch (error) {
+            notificationError = errorMessage(error);
             console.warn('[agent-org] could not inject updated scope into role session:', error);
           }
         }
-        const summary = `已更新「${role.title} · ${role.name}」的具体职权和边界${sessionNotified ? '，已向会话注入一次更新' : ''}。`;
+        const summary = `已更新「${role.title} · ${role.name}」的具体职权和边界${sessionNotified ? '，已向会话发送一次更新' : notificationError !== '' ? `，但会话通知失败：${notificationError}` : '，角色当前无会话'}。`;
         try {
           await appendAudit(store, { kind: 'personnel', action: 'set_scope', actor: store.current.lead.label, roleId: role.id, roleName: role.name, reason, summary });
         } catch (error) {
           console.warn('[agent-org] could not append scope audit:', error);
         }
-        return { roleId: role.id, roleName: role.name, sessionNotified, summary };
+        return { roleId: role.id, roleName: role.name, sessionNotified, notificationError, summary };
       },
     };
   }

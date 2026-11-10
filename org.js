@@ -949,6 +949,10 @@ export function buildEmployeeIdentityPrompt(org, role, workspace) {
 }
 
 /** The lead's proactive team-relationship design turn after setup. */
+export function buildScopeUpdatePrompt(authority, boundaries) {
+  return renderPrompt(promptData.scopeUpdate, { authority, boundaries });
+}
+
 export function buildTeamDesignPrompt(org) {
   const roster = org.roles.length === 0
     ? promptData.text.teamDesignRosterEmpty
