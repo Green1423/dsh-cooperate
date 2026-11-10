@@ -214,6 +214,8 @@
   "task": [
     "ROLE={{roleName}} | {{roleTitle}} | {{level}} | effort={{effort}}",
     "WORKSPACE={{workspacePath}}",
+    "AUTHORITY={{authority}}",
+    "BOUNDARY={{boundaries}}",
     "TASK",
     "{{taskText}}",
     "RULES",

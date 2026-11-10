@@ -162,6 +162,9 @@ test('designer identity includes concrete authority, boundaries, and workflow', 
   assert.match(prompt, /不可改业务代码，不可自行批准发布/);
   assert.match(prompt, /设计工作流/);
   assert.match(prompt, /专职设计师/);
+  const task = buildRoleTaskPrompt(org, role, '交付首页', { path: '/workspace', title: 'demo' });
+  assert.match(task, /AUTHORITY=可决定首页信息架构、筛选交互和设计验收/);
+  assert.match(task, /BOUNDARY=不可改业务代码，不可自行批准发布/);
 });
 
 

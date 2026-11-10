@@ -985,6 +985,8 @@ export function buildRoleTaskPrompt(org, role, task, workspace) {
     level: levelLabel(role.level),
     effort: role.effort || 'low',
     workspacePath: workspace?.path ?? promptData.text.workspacePathFallback,
+    authority: roleAuthority(role),
+    boundaries: roleBoundaries(role),
     taskText,
     reportRule: report ? promptData.text.reportRule : promptData.text.normalReportRule,
     output: report ? promptData.text.reportOutput : promptData.text.normalOutput,
