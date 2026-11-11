@@ -284,9 +284,10 @@ with its own onboarding flow.
 - **Larger audit history** — the organization audit/decision log now retains
   1,000 entries instead of 200; the Decisions tab renders the full retained
   history.
-- **Resizable team chat** — the Team chat pane next to the lead conversation has
-  a draggable left edge. Width is clamped for the viewport, saved in
-  localStorage, resettable by double-click, and adjustable with arrow keys.
+- **Resizable and collapsible team chat** — the Team chat pane next to the
+  lead conversation has a draggable left edge and a collapse button. Collapsed
+  state and width are saved in localStorage; width is clamped for the viewport,
+  resettable by double-click, and adjustable with arrow keys.
 - **Captain failure escalation** — a captain reports a persistently failing
   direct report with `team_report_failure`; only the lead can list/approve/reject
   with `team_review_failure`. Approval requires a fresh live model choice and

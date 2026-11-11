@@ -98,6 +98,8 @@ window.__ModuleLoader__.load({
       taskNoTitle: '未填写任务标题',
       teamChat: '协作对话',
       chatWidth: '调整协作对话框宽度',
+      collapseChat: '收起协作对话',
+      expandChat: '展开协作对话',
       teamChatHint: '组长与成员的实时委派、执行和返回结果。',
       teamChatEmpty: '当前还没有协作对话',
       teamChatLead: '组长',
@@ -478,6 +480,8 @@ window.__ModuleLoader__.load({
       taskNoTitle: 'Untitled task',
       teamChat: 'Team chat',
       chatWidth: 'Resize team chat',
+      collapseChat: 'Collapse team chat',
+      expandChat: 'Expand team chat',
       teamChatHint: 'Live assignments, execution, and returned results between the lead and members.',
       teamChatEmpty: 'No collaboration conversation yet',
       teamChatLead: 'Lead',
@@ -761,6 +765,10 @@ window.__ModuleLoader__.load({
     const css = `
 :root{--ao-team-chat-width:clamp(320px,34vw,420px);--ao-team-chat-right:0px}
 body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))!important;max-width:calc(100% - var(--ao-team-chat-width))!important;box-sizing:border-box;align-self:flex-start}
+.ao_teamChatReopen{position:fixed;z-index:6;top:var(--ao-team-chat-top,76px);right:0;display:flex;align-items:center;gap:6px;padding:10px 8px;border:1px solid var(--dsw-alias-border-l2);border-right:0;border-radius:10px 0 0 10px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:-6px 0 18px color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent);cursor:pointer;font:inherit;font-size:12px}
+.ao_teamChatReopen:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
+.ao_teamChatReopenArrow{font-size:18px;line-height:1}
+.ao_teamChatHeaderActions{display:flex;align-items:center;gap:6px;flex:none}
 .ao_teamChatPane{position:fixed;z-index:0;top:var(--ao-team-chat-top,76px);right:var(--ao-team-chat-right,0px);bottom:0;width:var(--ao-team-chat-width);display:flex;flex-direction:column;overflow:hidden;background:var(--dsw-alias-bg-layer-1);border-left:.5px solid var(--dsw-alias-border-l2);box-shadow:-8px 0 24px color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent)}
 .ao_teamChatResizer{position:absolute;left:0;top:0;bottom:0;width:7px;cursor:col-resize;z-index:5;touch-action:none;background:transparent}
 .ao_teamChatResizer:before{content:'';position:absolute;left:2px;top:0;bottom:0;width:1px;background:var(--dsw-alias-border-l2);opacity:.7}
@@ -3912,7 +3920,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
       return h('div', { className: className ? `ao_mdFallback ${className}` : 'ao_mdFallback' }, source);
     }
 
-    function GroupChat({ t, openSession, workspaceId }) {
+    function GroupChat({ t, openSession, workspaceId, onCollapse }) {
       const [data, setData] = React.useState(null);
       const [error, setError] = React.useState(null);
       const [loading, setLoading] = React.useState(true);
@@ -3976,18 +3984,33 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
             h('p', { className: 'ao_groupSub' }, t('teamChatHint')),
           ),
           h(
-            'button',
-            {
-              type: 'button',
-              className: 'ao_button ao_buttonGhost',
-              onClick: () => {
-                apiGroup(workspaceId)
-                  .then((next) => { setData(next); setError(null); })
-                  .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+            'div',
+            { className: 'ao_teamChatHeaderActions' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'ao_button ao_buttonGhost',
+                onClick: onCollapse,
+                title: t('collapseChat'),
+                'aria-label': t('collapseChat'),
               },
-            },
-            h(Icon, { name: 'refresh', size: 14 }),
-            h('span', null, t('refresh')),
+              h('span', { className: 'ao_teamChatReopenArrow' }, '›'),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'ao_button ao_buttonGhost',
+                onClick: () => {
+                  apiGroup(workspaceId)
+                    .then((next) => { setData(next); setError(null); })
+                    .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+                },
+              },
+              h(Icon, { name: 'refresh', size: 14 }),
+              h('span', null, t('refresh')),
+            ),
           ),
         ),
         h(
@@ -4574,8 +4597,12 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
     }
 
     const TEAM_CHAT_WIDTH_KEY = 'dsh-agent-org.team-chat-width';
+    const TEAM_CHAT_COLLAPSED_KEY = 'dsh-agent-org.team-chat-collapsed';
     const DEFAULT_CHAT_WIDTH = 420;
     const clampChatWidth = (value) => Math.max(280, Math.min(760, Number(value) || DEFAULT_CHAT_WIDTH, Math.max(300, window.innerWidth - 260)));
+    const readChatCollapsed = () => {
+      try { return window.localStorage.getItem(TEAM_CHAT_COLLAPSED_KEY) === '1'; } catch { return false; }
+    };
     const readChatWidth = () => {
       try {
         return clampChatWidth(window.localStorage.getItem(TEAM_CHAT_WIDTH_KEY));
@@ -4648,9 +4675,14 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
       const interactionRef = React.useRef(false);
       const layoutSavingRef = React.useRef(false);
       const [chatWidth, setChatWidth] = React.useState(readChatWidth);
+      const [chatCollapsed, setChatCollapsed] = React.useState(readChatCollapsed);
       const chatResizeRef = React.useRef(null);
 
       dirtyRef.current = dirty || setupDirty || edgeDirty;
+
+      React.useEffect(() => {
+        try { window.localStorage.setItem(TEAM_CHAT_COLLAPSED_KEY, chatCollapsed ? '1' : '0'); } catch { /* private mode */ }
+      }, [chatCollapsed]);
 
       React.useEffect(() => {
         const width = clampChatWidth(chatWidth);
@@ -4792,7 +4824,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
       }, [sessionId]);
 
       React.useEffect(() => {
-        const open = teamDock?.isLead === true && teamDock?.enabled === true;
+        const open = teamDock?.isLead === true && teamDock?.enabled === true && !chatCollapsed;
         document.body.classList.toggle('ao-team-chat-open', open);
         document.documentElement.style.removeProperty('--ao-team-chat-top');
         if (!open) {
@@ -4838,7 +4870,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
           document.documentElement.style.removeProperty('--ao-team-chat-right');
           document.body.classList.remove('ao-team-chat-open');
         };
-      }, [sessionId, teamDock?.isLead, teamDock?.enabled]);
+      }, [sessionId, teamDock?.isLead, teamDock?.enabled, chatCollapsed]);
 
       React.useEffect(() => {
         if (!open) return undefined;
@@ -5873,7 +5905,20 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
       );
 
       const teamChatNode = teamDock?.isLead === true && teamDock?.enabled === true ? ReactDOM.createPortal(
-        h(
+        chatCollapsed
+          ? h(
+            'button',
+            {
+              type: 'button',
+              className: 'ao_teamChatReopen',
+              onClick: () => setChatCollapsed(false),
+              title: tr('expandChat'),
+              'aria-label': tr('expandChat'),
+            },
+            h('span', { className: 'ao_teamChatReopenArrow' }, '‹'),
+            h('span', null, tr('teamChat')),
+          )
+          : h(
           'aside',
           {
             className: 'ao_teamChatPane',
@@ -5901,6 +5946,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
             t: tr,
             workspaceId: teamDock.workspaceId,
             openSession: openMemberSession,
+            onCollapse: () => setChatCollapsed(true),
           }),
         ),
         document.body,
