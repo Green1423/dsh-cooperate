@@ -1382,6 +1382,13 @@ test('a same-position captain can delegate only to a direct report', async () =>
     assert.equal(effortResult.effort, 'high');
     const afterModel = await callRoute(routes[0], 'GET', undefined, { 'x-agent-org': '1' });
     assert.deepEqual(afterModel.json.org.roles.find((role) => role.id === 'optimizer').model, { provider: 'deepseek', model: 'deepseek-flash', reasoningEffort: 'high' });
+    const invalidMemberSelection = await ctx.sessionController.commands.selectModel({
+      sessionId: optimizerRole.sessionId,
+      provider: 'deepseek',
+      model: 'not-a-real-model',
+    }).then(() => null, (error) => error);
+    assert.ok(invalidMemberSelection);
+    assert.match(invalidMemberSelection.message, /成员模型由组长\/队长统一分配/);
     const qwenModel = await captainModelTool.execute(
       { role: 'optimizer', provider: 'opencode-go', model: 'qwen3.8-max', reason: '审核任务需要 Qwen 的视觉能力' },
       { agent: captainAgent, signal: new AbortController().signal },
