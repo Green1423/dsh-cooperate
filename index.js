@@ -501,7 +501,7 @@ export function apply(ctx) {
     if (workspaceRecord === undefined) return false;
     const live = ctx.sessions.get(childId);
     if (live !== undefined) {
-      try { await ctx.sessions.flush(live); } catch (error) {
+      try { await flushLiveSession(live); } catch (error) {
         console.warn('[agent-org] could not flush role session before attach:', error);
       }
     }
@@ -527,6 +527,11 @@ export function apply(ctx) {
       .map((block) => block.text)
       .join('\n')
       .trim();
+  }
+
+  async function flushLiveSession(session) {
+    if (typeof ctx.sessions?.flush !== 'function') return;
+    await ctx.sessions.flush(session);
   }
 
   async function runAgentTurn(agent, prompt, signal) {
@@ -658,7 +663,7 @@ export function apply(ctx) {
     try { ctx.sessionTitle.rename(agent.session, role.name); } catch (error) {
       console.warn('[agent-org] could not title role session:', error);
     }
-    try { await ctx.sessions.flush(agent.session); } catch (error) {
+    try { await flushLiveSession(agent.session); } catch (error) {
       console.warn('[agent-org] could not flush new role session:', error);
     }
     // Attach immediately: a newly created role must appear in the current
@@ -5260,7 +5265,8 @@ export function apply(ctx) {
   // Install only after the route effect has claimed its path. If registration
   // throws, no agent-scoped section or tool is left behind.
   void (async () => {
-    for (const agent of ctx.agents.list()) {
+    const liveAgents = typeof ctx.agents?.list === 'function' ? ctx.agents.list() : [];
+    for (const agent of liveAgents) {
       if (typeof ctx.agents.get !== 'function' || ctx.agents.get(agent.id) === agent) await installSafely(agent);
     }
   })();

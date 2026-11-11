@@ -610,9 +610,28 @@ turn may run concurrently, subject to `maxActiveSubagents`.
 ## Installation
 
 Install the directory as a profile dependency and select the bundle, or use the
-Plugin Manager's **Install bundle**. There is no build step and no runtime
-dependency. A full DSH Host restart is required when replacing an already
-running Host plugin; a page refresh only reloads the browser bundle.
+Plugin Manager's **Install bundle**. There is no build step and no bundled
+runtime dependency. A full DSH Host restart is required when replacing an
+already running Host plugin; a page refresh only reloads the browser bundle.
+
+### Compatibility
+
+- `engines.dsh`: `>=0.2.1-rc.5 <0.3.0` (tested against `0.2.1-rc.5`).
+- `engines.node`: `>=22.0.0` (the Host must support ESM JSON import attributes,
+  `Promise.withResolvers`, and Web `fetch`).
+- Host peer: `@deepseek-ai/cordis >=4.0.5 <5.0.0` (optional peer; supplied by DSH).
+- Web client dependencies (`react`, `react-dom`, and the injected
+  `@deepseek-ai/dsh-client-*` modules) are supplied by the DSH Web host, not
+  bundled here.
+- Host APIs used: `systemPrompt`, `tools`, `subagents`, `agents`, `sessions`,
+  `workspaceRegistry`, `sessionTitle`, `sessionQuery`, `sessionController`,
+  `skills`, `webServer`, plus the profile/client services declared by
+  `dsh.client.inject`.
+
+The plugin uses capability checks and fallbacks for optional Host methods
+(`sessions.flush`, `agents.list`, model catalog/selection paths). DSH `0.3.x`
+changes the minor compatibility line and must be revalidated before widening
+`engines.dsh`; the plugin does not claim untested API compatibility.
 
 ## Limits
 
