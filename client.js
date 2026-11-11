@@ -5500,12 +5500,25 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
         const relations = (state.org.relations ?? []).filter((relation) => (
           relation.from !== role.id && relation.to !== role.id
         ));
+        const helpRequests = (state.org.helpRequests ?? []).filter((request) => (
+          request.from !== role.id && request.to !== role.id
+        ));
+        const failureReports = (state.org.failureReports ?? []).filter((report) => (
+          report.from !== role.id && report.roleId !== role.id
+        ));
         const layout = { ...(state.org.layout ?? {}) };
         delete layout[role.id];
         setSaveStatus('saving');
         setSaveError(null);
         try {
-          const data = await apiSave(state.revision, { ...state.org, roles, relations, layout }, sessionId);
+          const data = await apiSave(state.revision, {
+            ...state.org,
+            roles,
+            relations,
+            helpRequests,
+            failureReports,
+            layout,
+          }, sessionId);
           setState(data);
           setDirty(false);
           setSelectedId('lead');
