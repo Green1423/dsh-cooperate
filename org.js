@@ -983,9 +983,11 @@ export function buildRoleBootstrapPrompt(org, role, workspace) {
 export function buildRoleTaskPrompt(org, role, task, workspace) {
   const taskText = String(task ?? '').trim();
   const report = roleKind(role) === 'report';
+  const uiTestRule = ['coding', 'coding-captain', 'design', 'qa', 'review'].includes(roleKind(role)) ? promptData.text.uiTestRule : '';
   return renderPrompt(promptData.task, {
     workspacePath: workspace?.path ?? promptData.text.workspacePathFallback,
     taskText,
+    uiTestRule,
     reportRule: report ? promptData.text.reportRule : promptData.text.normalReportRule,
     output: report ? promptData.text.reportOutput : promptData.text.normalOutput,
     reportSuffix: report ? promptData.text.reportSuffix : '',
