@@ -292,13 +292,18 @@ test('disabled organizations reject delegation guidance and layout positions val
 
 
 test('role bootstrap and follow-up task prompts preserve employee identity', () => {
-  const org = orgWith([sampleRole()]);
+  const org = orgWith([sampleRole({
+    authority: '可决定首页信息架构和交互验收',
+    boundaries: '不可修改业务代码',
+  })]);
   const role = org.roles[0];
   const workspace = { title: 'W', path: '/w' };
   const bootstrap = buildRoleBootstrapPrompt(org, role, workspace);
   assert.match(bootstrap, /产品设计师-01/);
   assert.match(bootstrap, /职位：产品设计师/);
   assert.match(bootstrap, /角色初始化/);
+  assert.match(bootstrap, /可决定首页信息架构和交互验收/);
+  assert.match(bootstrap, /不可修改业务代码/);
   const task = buildRoleTaskPrompt(org, role, '安排入职', workspace);
   assert.doesNotMatch(task, /ROLE=/);
   assert.match(task, /安排入职/);

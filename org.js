@@ -976,6 +976,8 @@ export function buildRoleBootstrapPrompt(org, role, workspace) {
     roleTitle: role.title,
     level: levelLabel(role.level),
     manager,
+    authority: roleAuthority(role),
+    boundaries: roleBoundaries(role),
   });
 }
 
