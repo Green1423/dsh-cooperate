@@ -80,6 +80,10 @@ with its own onboarding flow.
   temporary relation can expire at a chosen time or remain until removed;
   expired relations disappear from prompt context but stay visible/removable
   in the graph.
+- **Shared task board** — the Team Org panel has a **Tasks** tab backed by
+  persistent shared tasks with revision CAS, dependencies, owner claim/release,
+  and advisory write-scope overlap warnings. Tasks are managed by the
+  `team_task_create/list/update` tools; the UI is read-only.
 - **Role templates** — preset templates for product design, software
   engineering, QA, code review/optimization, GitHub submission, code security,
   and compliance. The floating **Add member** button opens a template picker;

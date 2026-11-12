@@ -207,6 +207,39 @@
       "purpose": "沉淀项目/阶段经验",
       "args": "kind/title/summary/instructions",
       "when": "项目完成或阶段结束"
+    },
+    {
+      "name": "team_task_create",
+      "roles": [
+        "lead",
+        "captain",
+        "member"
+      ],
+      "purpose": "创建共享任务，支持依赖和写范围提示",
+      "args": "subject/description/dependsOn/writeScopes",
+      "when": "拆分并行工作或需要接力时"
+    },
+    {
+      "name": "team_task_list",
+      "roles": [
+        "lead",
+        "captain",
+        "member"
+      ],
+      "purpose": "查看任务板、依赖状态和写范围重叠",
+      "args": "status?/includeDeleted?/mine?",
+      "when": "领取任务或汇报进展前"
+    },
+    {
+      "name": "team_task_update",
+      "roles": [
+        "lead",
+        "captain",
+        "member"
+      ],
+      "purpose": "claim/release/complete/reopen/reassign/edit/delete，带 revision CAS",
+      "args": "taskId/expectedRevision/action/...",
+      "when": "开始、完成、重开或调整任务时"
     }
   ],
   "notes": [
@@ -221,6 +254,7 @@
     "面向人的文档最后由文档师完成；面向 AI 的注释/接口/交接由需要的人维护。",
     "成员持续失败由队长 team_report_failure 上报，组长 team_review_failure 审批重建。",
     "任何委派、人事或关系变更都必须写 reason；组长和队长只能管理直属成员。",
-    "前端/界面测试必须用无头浏览器操作并截图，不能只用源码或单测断言。"
+    "前端/界面测试必须用无头浏览器操作并截图，不能只用源码或单测断言。",
+    "共享任务板用 revision CAS；依赖未完成不能 claim，writeScopes 重叠只警告不锁文件。"
   ]
 }

@@ -506,6 +506,19 @@ window.__ModuleLoader__.load({
       close: 'Close',
       refresh: 'Refresh',
       tabOrg: 'Organization',
+      tabTasks: 'Tasks',
+      tasksEmpty: 'No shared tasks yet',
+      tasksHint: 'Tasks come from team tools; blocked dependencies cannot be claimed, and overlapping write scopes are warnings only.',
+      taskOwner: 'Owner',
+      taskUnassigned: 'Unassigned',
+      taskDependencies: 'Dependencies',
+      taskScopes: 'Write scopes',
+      taskRevision: 'Revision',
+      taskWarnings: 'Write-scope overlaps',
+      taskPending: 'Pending',
+      taskInProgress: 'In progress',
+      taskCompleted: 'Completed',
+      taskDeleted: 'Deleted',
       tabActivity: 'Collaboration',
       tabAudit: 'Decisions',
       tabUsage: 'Tokens & cost',
@@ -1093,6 +1106,18 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
 .ao_usageName{display:block;color:var(--dsw-alias-label-primary);font-weight:600}
 @media (max-width:720px){.ao_usageTotalGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.ao_usagePriceGrid{grid-template-columns:1fr}}
 .ao_auditPage{overflow:auto;padding-bottom:28px}
+.ao_taskBoard{display:flex;flex-direction:column;gap:10px;max-width:860px;padding-bottom:24px}
+.ao_taskCard{border:.5px solid var(--dsw-alias-border-l2);border-radius:12px;padding:12px 14px;background:var(--dsw-alias-bg-layer-1);display:flex;flex-direction:column;gap:7px}
+.ao_taskCardActive{border-color:var(--dsw-alias-state-business-primary)}
+.ao_taskCardDone{opacity:.72}
+.ao_taskHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ao_taskId{font-size:11px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-layer-2);border-radius:5px;padding:2px 5px}
+.ao_taskStatus{font-size:11px;border-radius:999px;padding:2px 7px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+.ao_taskStatusActive{color:var(--dsw-alias-state-business-primary)}
+.ao_taskStatusDone{color:var(--dsw-alias-state-success-primary)}
+.ao_taskBlocked{font-size:11px;color:var(--dsw-alias-state-warn-label)}
+.ao_taskDescription{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
+.ao_taskMeta{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .ao_auditList{display:flex;flex-direction:column;gap:9px;max-width:860px}
 .ao_auditItem{border:.5px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);padding:11px 13px}
 .ao_auditHead{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}
@@ -4666,6 +4691,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
       const refreshingRef = React.useRef(false);
       const noticeTimerRef = React.useRef(null);
       const tabOrgRef = React.useRef(null);
+      const tabTasksRef = React.useRef(null);
       const tabActivityRef = React.useRef(null);
       const tabAuditRef = React.useRef(null);
       const tabUsageRef = React.useRef(null);
@@ -5110,7 +5136,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
         }
         setTab(next);
         requestAnimationFrame(() => {
-          const target = next === 'org' ? tabOrgRef.current : next === 'activity' ? tabActivityRef.current : next === 'audit' ? tabAuditRef.current : next === 'usage' ? tabUsageRef.current : tabSettingsRef.current;
+          const target = next === 'org' ? tabOrgRef.current : next === 'tasks' ? tabTasksRef.current : next === 'activity' ? tabActivityRef.current : next === 'audit' ? tabAuditRef.current : next === 'usage' ? tabUsageRef.current : tabSettingsRef.current;
           target?.focus();
         });
       };
@@ -5131,7 +5157,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
       const onTabKeyDown = (event) => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault();
-        const order = ['org', 'activity', 'audit', 'usage', 'settings'];
+        const order = ['org', 'tasks', 'activity', 'audit', 'usage', 'settings'];
         const current = Math.max(0, order.indexOf(tab));
         const direction = event.key === 'ArrowRight' ? 1 : -1;
         selectTab(order[(current + direction + order.length) % order.length]);
@@ -5990,6 +6016,24 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
           {
             type: 'button',
             role: 'tab',
+            'aria-selected': tab === 'tasks',
+            'aria-controls': 'ao-panel-tasks',
+            id: 'ao-tab-tasks',
+            ref: tabTasksRef,
+            tabIndex: tab === 'tasks' ? 0 : -1,
+            className: cx('ao_tab', tab === 'tasks' && 'ao_tabActive'),
+            onClick: () => switchTab('tasks'),
+          },
+          tr('tabTasks'),
+          state?.org?.tasks?.filter((task) => task.status !== 'deleted').length
+            ? h('span', { className: 'ao_triggerCount' }, ` ${state.org.tasks.filter((task) => task.status !== 'deleted').length}`)
+            : null,
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            role: 'tab',
             'aria-selected': tab === 'activity',
             'aria-controls': 'ao-panel-activity',
             id: 'ao-tab-activity',
@@ -6626,6 +6670,87 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
           ),
         );
 
+        const taskList = Array.isArray(org.tasks) ? org.tasks.filter((task) => task.status !== 'deleted') : [];
+        const taskWarnings = (() => {
+          const active = taskList.filter((task) => task.status === 'in_progress');
+          const warnings = [];
+          for (let left = 0; left < active.length; left += 1) {
+            for (let right = left + 1; right < active.length; right += 1) {
+              const a = active[left];
+              const b = active[right];
+              if ((a.writeScopes ?? []).some((scopeA) => (b.writeScopes ?? []).some((scopeB) => (
+                scopeA === scopeB || scopeA.startsWith(`${scopeB}/`) || scopeB.startsWith(`${scopeA}/`)
+              )))) warnings.push(`${a.id} / ${b.id}`);
+            }
+          }
+          return warnings;
+        })();
+        const taskOwnerName = (ownerId) => {
+          if (!ownerId) return tr('taskUnassigned');
+          if (ownerId === 'lead') return org.lead.label;
+          return org.roles.find((role) => role.id === ownerId)?.name ?? ownerId;
+        };
+        const tasksPanel = h(
+          'section',
+          {
+            className: 'ao_main',
+            id: 'ao-panel-tasks',
+            role: 'tabpanel',
+            'aria-labelledby': 'ao-tab-tasks',
+            hidden: tab !== 'tasks',
+            style: { gridColumn: '1 / -1', flex: 1, minHeight: 0 },
+            'aria-label': tr('tabTasks'),
+          },
+          h(
+            'div',
+            { className: 'ao_sectionHead' },
+            h(
+              'div',
+              null,
+              h('h3', { className: 'ao_sectionTitle' }, tr('tabTasks')),
+              h('p', { className: 'ao_sectionHint' }, tr('tasksHint')),
+            ),
+          ),
+          taskWarnings.length > 0 ? h(
+            'p',
+            { className: 'ao_errorText', role: 'status' },
+            `${tr('taskWarnings')}: ${taskWarnings.join('、')}`,
+          ) : null,
+          taskList.length === 0 ? h(
+            'div',
+            { className: 'ao_empty', style: { marginLeft: 0 } },
+            h(Icon, { name: 'info', size: 20, className: 'ao_emptyIcon' }),
+            h('div', { className: 'ao_emptyTitle' }, tr('tasksEmpty')),
+          ) : h(
+            'div',
+            { className: 'ao_taskBoard' },
+            taskList.map((task) => {
+              const blocked = (task.dependsOn ?? []).some((id) => taskList.find((item) => item.id === id)?.status !== 'completed');
+              return h(
+                'article',
+                { key: task.id, className: cx('ao_taskCard', `ao_taskCard${task.status === 'in_progress' ? 'Active' : task.status === 'completed' ? 'Done' : ''}`) },
+                h(
+                  'div',
+                  { className: 'ao_taskHead' },
+                  h('code', { className: 'ao_taskId' }, task.id),
+                  h('strong', null, task.subject),
+                  h('span', { className: `ao_taskStatus ao_taskStatus${task.status === 'in_progress' ? 'Active' : task.status === 'completed' ? 'Done' : ''}` }, tr(task.status === 'in_progress' ? 'taskInProgress' : task.status === 'completed' ? 'taskCompleted' : 'taskPending')),
+                  blocked ? h('span', { className: 'ao_taskBlocked' }, tr('taskDependencies')) : null,
+                ),
+                task.description ? h('p', { className: 'ao_taskDescription' }, task.description) : null,
+                h(
+                  'div',
+                  { className: 'ao_taskMeta' },
+                  h('span', null, `${tr('taskOwner')}: ${taskOwnerName(task.ownerId)}`),
+                  (task.dependsOn ?? []).length > 0 ? h('span', null, `${tr('taskDependencies')}: ${task.dependsOn.join(', ')}`) : null,
+                  (task.writeScopes ?? []).length > 0 ? h('span', null, `${tr('taskScopes')}: ${task.writeScopes.join(', ')}`) : null,
+                  h('span', null, `${tr('taskRevision')}: ${task.revision}`),
+                ),
+              );
+            }),
+          ),
+        );
+
         const activityPanel = h(
           'section',
           {
@@ -6949,6 +7074,7 @@ body.ao-team-chat-open .wSkVaW_body{width:calc(100% - var(--ao-team-chat-width))
           React.Fragment,
           null,
           orgPanel,
+          tasksPanel,
           activityPanel,
           auditPanel,
           usagePanel,

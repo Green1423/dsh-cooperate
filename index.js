@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { OrgValidationError, ORG_PATTERNS, ROLE_LEVELS, ROLE_TEMPLATES, buildEmployeeIdentityPrompt, buildLeadPrompt, buildRoleBootstrapPrompt, buildMidprojectReportPrompt, buildRoleTaskPrompt, buildTeamDesignPrompt, createDefaultOrg, findRole, normalizeEffort, publicOrg, buildScopeUpdatePrompt } from './org.js';
+import { OrgValidationError, ORG_PATTERNS, ROLE_LEVELS, ROLE_TEMPLATES, buildEmployeeIdentityPrompt, buildLeadPrompt, buildRoleBootstrapPrompt, buildMidprojectReportPrompt, buildRoleTaskPrompt, buildTeamDesignPrompt, createDefaultOrg, findRole, normalizeEffort, publicOrg, buildScopeUpdatePrompt, MAX_TASKS, normalizeWriteScope, taskReady, taskScopeWarnings } from './org.js';
 import { OrgRevisionError, createOrgStore } from './org-store.js';
 import { createExperienceStore } from './experience.js';
 import teamHelpData from './content/team-help.json' with { type: 'json' };
@@ -3875,11 +3875,233 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createRelationTool(employee)));
       disposers.push(agent.ctx.tools.register(createMyReportsTool(employee)));
       disposers.push(agent.ctx.tools.register(createHelpRequestTool(employee)));
+      for (const tool of createTaskTools(employee)) disposers.push(agent.ctx.tools.register(tool));
       installations.set(agent, disposers);
       ensureCaptainTools(agent, employee);
     } finally {
       installing.delete(agent);
     }
+  }
+
+  function createTaskTools(employee) {
+    const { store, workspace } = employee;
+    const taskSchema = {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string' },
+        subject: { type: 'string' },
+        description: { type: 'string' },
+        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'deleted'] },
+        ownerId: { type: 'string' },
+        dependsOn: { type: 'array', items: { type: 'string' } },
+        writeScopes: { type: 'array', items: { type: 'string' } },
+        revision: { type: 'integer' },
+        createdBy: { type: 'string' },
+        result: { type: 'string' },
+        createdAt: { type: 'string' },
+        updatedAt: { type: 'string' },
+      },
+      required: ['id', 'subject', 'description', 'status', 'ownerId', 'dependsOn', 'writeScopes', 'revision', 'createdBy', 'result', 'createdAt', 'updatedAt'],
+    };
+    const actorFor = (org, caller) => {
+      if (caller === undefined) return null;
+      if (org.lead.sessionId === caller.session.id) return { id: 'lead', name: org.lead.label, isLead: true };
+      const role = org.roles.find((item) => item.sessionId === caller.session.id && item.enabled !== false);
+      return role === undefined ? null : { id: role.id, name: role.name, isLead: false };
+    };
+    const load = async (caller) => {
+      await store.refresh();
+      if (!store.configured || !store.current.enabled) throw new Error('协作组尚未启用。');
+      const org = store.current;
+      const actor = actorFor(org, caller);
+      if (actor === null) throw new Error('当前会话不是协作组成员。');
+      return { org, actor };
+    };
+    const saveTasks = async (mutator) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const current = store.current;
+        const result = mutator(current);
+        if (result === null) throw new Error('任务不存在或状态已变化，请刷新后重试。');
+        try {
+          const saved = await store.save(current.revision, { ...current, tasks: result.tasks });
+          return { org: saved, tasks: result.tasks, warnings: taskScopeWarnings(result.tasks), value: result.value };
+        } catch (error) {
+          if (error instanceof OrgRevisionError && attempt < 2) continue;
+          throw error;
+        }
+      }
+      throw new Error('任务保存失败，请重试。');
+    };
+    const audit = async (entry) => {
+      try { await appendAudit(store, entry); } catch (error) { console.warn('[agent-org] could not append task audit:', error); }
+    };
+    const create = {
+      name: 'team_task_create',
+      description: 'Any team member can add a shared task. Dependencies must be completed before the task can be claimed. writeScopes are workspace-relative path hints; overlaps produce warnings, never locks.',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          subject: { type: 'string', description: '任务标题，1–120 字。' },
+          description: { type: 'string', description: '任务详情，最多 2000 字。' },
+          dependsOn: { type: 'array', items: { type: 'string' }, description: '依赖的任务 id，全部完成后才能 claim。' },
+          writeScopes: { type: 'array', items: { type: 'string' }, description: '工作区相对写范围，例如 src/chat.js；仅作重叠警告。' },
+        },
+        required: ['subject'],
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { task: taskSchema, warnings: { type: 'array', items: { type: 'string' } } }, required: ['task', 'warnings'] },
+        render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }]; },
+      },
+      isConcurrencySafe: () => false,
+      presentCall(args) { return { card: 'generic', title: `新建任务：${args.subject ?? ''}`, kind: 'other', rawInput: args }; },
+      async execute(args, exec) {
+        if (disposed) throw new Error('Agent Org 插件已卸载');
+        const { org, actor } = await load(exec.agent);
+        const subject = typeof args.subject === 'string' ? args.subject.trim().slice(0, 120) : '';
+        if (subject === '') throw new Error('任务标题不能为空。');
+        const description = typeof args.description === 'string' ? args.description.trim().slice(0, 2000) : '';
+        const dependsOn = Array.isArray(args.dependsOn) ? [...new Set(args.dependsOn.map((item) => String(item ?? '').trim()).filter(Boolean))].slice(0, 32) : [];
+        for (const id of dependsOn) {
+          const dependency = org.tasks.find((task) => task.id === id);
+          if (dependency === undefined || dependency.status === 'deleted') throw new Error(`找不到可依赖的任务“${id}”。`);
+        }
+        const rawScopes = Array.isArray(args.writeScopes) ? args.writeScopes : [];
+        const writeScopes = [...new Set(rawScopes.map(normalizeWriteScope).filter(Boolean))].slice(0, 20);
+        if (writeScopes.length !== rawScopes.filter((item) => String(item ?? '').trim() !== '').length) throw new Error('写范围必须是不越出工作区的相对路径。');
+        const active = org.tasks.filter((task) => task.status !== 'deleted').length;
+        if (active >= MAX_TASKS) throw new Error(`任务数量不能超过 ${MAX_TASKS}。`);
+        const nextNumber = org.tasks.reduce((max, task) => Math.max(max, Number(task.id.slice(5)) || 0), 0) + 1;
+        if (nextNumber > 999999999) throw new Error('任务 id 空间已耗尽。');
+        const now = new Date().toISOString();
+        const task = { id: `task-${nextNumber}`, subject, description, status: 'pending', ownerId: '', dependsOn, writeScopes, revision: 1, createdBy: actor.id, result: '', createdAt: now, updatedAt: now };
+        const saved = await saveTasks((current) => ({ tasks: [...current.tasks, task], value: task }));
+        await audit({ kind: 'work', action: 'task_create', actor: actor.name, roleId: actor.id, roleName: actor.name, reason: subject, summary: `新建任务 ${task.id}：${subject}` });
+        return { task: saved.value, warnings: saved.warnings };
+      },
+    };
+    const list = {
+      name: 'team_task_list',
+      description: 'List shared tasks with dependency readiness and advisory write-scope overlap warnings.',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'deleted'], description: '可选状态过滤。' },
+          includeDeleted: { type: 'boolean', description: '是否包含已删除任务。' },
+          mine: { type: 'boolean', description: '只显示分配给当前成员的任务。' },
+        },
+        required: [],
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { tasks: { type: 'array', items: taskSchema }, warnings: { type: 'array', items: { type: 'string' } } }, required: ['tasks', 'warnings'] },
+        render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }]; },
+      },
+      isConcurrencySafe: () => true,
+      presentCall() { return { card: 'generic', title: '任务板', kind: 'other' }; },
+      async execute(args, exec) {
+        const { org, actor } = await load(exec.agent);
+        let tasks = org.tasks;
+        if (args.status !== undefined) tasks = tasks.filter((task) => task.status === args.status);
+        else if (args.includeDeleted !== true) tasks = tasks.filter((task) => task.status !== 'deleted');
+        if (args.mine === true) tasks = tasks.filter((task) => task.ownerId === actor.id);
+        return { tasks, warnings: taskScopeWarnings(org.tasks) };
+      },
+    };
+    const update = {
+      name: 'team_task_update',
+      description: 'Claim, release, complete, reopen, reassign, edit, or delete a shared task. expectedRevision is required; stale updates are rejected.',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          taskId: { type: 'string', description: '任务 id，例如 task-1。' },
+          expectedRevision: { type: 'integer', description: '调用方看到的任务 revision。' },
+          action: { type: 'string', enum: ['claim', 'release', 'complete', 'reopen', 'reassign', 'edit', 'delete'] },
+          owner: { type: 'string', description: 'reassign 时的成员 id/姓名/职位；传空字符串可释放。' },
+          subject: { type: 'string', description: 'edit 时的新标题。' },
+          description: { type: 'string', description: 'edit 时的新详情。' },
+          writeScopes: { type: 'array', items: { type: 'string' }, description: 'edit 时的新写范围。' },
+          result: { type: 'string', description: 'complete 时的结果摘要。' },
+        },
+        required: ['taskId', 'expectedRevision', 'action'],
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { task: taskSchema, warnings: { type: 'array', items: { type: 'string' } } }, required: ['task', 'warnings'] },
+        render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }]; },
+      },
+      isConcurrencySafe: () => false,
+      presentCall(args) { return { card: 'generic', title: `任务 ${args.taskId ?? ''}：${args.action ?? ''}`, kind: 'other', rawInput: args }; },
+      async execute(args, exec) {
+        const { org, actor } = await load(exec.agent);
+        const taskId = typeof args.taskId === 'string' ? args.taskId.trim() : '';
+        const expectedRevision = Number(args.expectedRevision);
+        const action = String(args.action ?? '');
+        const saved = await saveTasks((current) => {
+          const index = current.tasks.findIndex((task) => task.id === taskId);
+          if (index < 0) return null;
+          const tasks = current.tasks.map((item) => (item.id === taskId
+            ? { ...item, dependsOn: [...item.dependsOn], writeScopes: [...item.writeScopes] }
+            : item));
+          const task = tasks[index];
+          if (task.revision !== expectedRevision) throw new Error(`任务 ${taskId} 已更新（当前 revision ${task.revision}），请刷新后重试。`);
+          if (action === 'claim') {
+            if (task.status !== 'pending') throw new Error('只有 pending 任务可以 claim。');
+            if (task.ownerId !== '' && task.ownerId !== actor.id) throw new Error('任务已被其他成员认领。');
+            if (!taskReady(task, current.tasks)) throw new Error('任务依赖尚未全部完成。');
+            task.ownerId = actor.id;
+            task.status = 'in_progress';
+          } else if (action === 'release') {
+            if (task.ownerId !== actor.id && !actor.isLead) throw new Error('只有负责人或组长可以释放任务。');
+            if (task.status !== 'in_progress') throw new Error('只有进行中的任务可以释放。');
+            task.ownerId = '';
+            task.status = 'pending';
+          } else if (action === 'complete') {
+            if (task.ownerId !== actor.id && !actor.isLead) throw new Error('只有负责人或组长可以完成任务。');
+            if (task.status !== 'in_progress') throw new Error('只有进行中的任务可以完成。');
+            task.status = 'completed';
+            task.result = typeof args.result === 'string' ? args.result.trim().slice(0, 2000) : '';
+          } else if (action === 'reopen') {
+            if (task.ownerId !== actor.id && !actor.isLead) throw new Error('只有负责人或组长可以重开任务。');
+            if (task.status !== 'completed') throw new Error('只有已完成的任务可以重开。');
+            task.status = 'pending';
+            task.ownerId = '';
+          } else if (action === 'reassign') {
+            if (!actor.isLead) throw new Error('只有组长可以改派任务。');
+            if (task.status === 'deleted') throw new Error('已删除任务不能改派。');
+            const ownerValue = typeof args.owner === 'string' ? args.owner.trim() : '';
+            const ownerRole = ownerValue === '' ? null : findRole(current, ownerValue);
+            if (ownerValue !== '' && ownerRole === null) throw new Error(`找不到成员“${ownerValue}”。`);
+            task.ownerId = ownerRole?.id ?? '';
+            task.status = ownerRole === null ? 'pending' : 'pending';
+          } else if (action === 'edit') {
+            if (task.ownerId !== actor.id && !actor.isLead) throw new Error('只有负责人或组长可以编辑任务。');
+            if (typeof args.subject === 'string') {
+              const subject = args.subject.trim().slice(0, 120);
+              if (subject === '') throw new Error('任务标题不能为空。');
+              task.subject = subject;
+            }
+            if (typeof args.description === 'string') task.description = args.description.trim().slice(0, 2000);
+            if (Array.isArray(args.writeScopes)) {
+              const raw = args.writeScopes;
+              const scopes = [...new Set(raw.map(normalizeWriteScope).filter(Boolean))].slice(0, 20);
+              if (scopes.length !== raw.filter((item) => String(item ?? '').trim() !== '').length) throw new Error('写范围必须是不越出工作区的相对路径。');
+              task.writeScopes = scopes;
+            }
+          } else if (action === 'delete') {
+            if (task.ownerId !== actor.id && !actor.isLead) throw new Error('只有负责人或组长可以删除任务。');
+            task.status = 'deleted';
+            task.ownerId = '';
+          } else {
+            throw new Error(`不支持的任务操作“${action}”。`);
+          }
+          task.revision += 1;
+          task.updatedAt = new Date().toISOString();
+          return { tasks, value: task };
+        });
+        await audit({ kind: 'work', action: `task_${action}`, actor: actor.name, roleId: actor.id, roleName: actor.name, reason: action, summary: `任务 ${taskId} ${action}` });
+        return { task: saved.value, warnings: saved.warnings };
+      },
+    };
+    return [create, list, update];
   }
 
   async function installLead(agent) {
@@ -4079,6 +4301,7 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createActiveTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createHrTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createScopeTool({ store })));
+      for (const tool of createTaskTools({ store, workspace })) disposers.push(agent.ctx.tools.register(tool));
       disposers.push(agent.ctx.tools.register(createModuleGroupTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createFireTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createSkillSearchTool({ store, workspace })));

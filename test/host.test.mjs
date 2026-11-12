@@ -423,7 +423,7 @@ test('apply installs lead policy and a waiting team_assign tool', async () => {
     assert.equal(root.captured.sections.length, 2);
     assert.equal(root.captured.sections[0].interpolate, false);
     assert.match(root.captured.sections[0].text(), /尚未启用/);
-    assert.equal(root.captured.tools.length, 20);
+    assert.equal(root.captured.tools.length, 23);
     assert.equal(root.captured.tools[0].name, 'team_assign');
     assert.equal(root.captured.tools[0].isConcurrencySafe(), true);
     assert.equal(root.captured.tools[1].name, 'team_relation');
@@ -2081,6 +2081,76 @@ test('captain reports a failing direct report and the lead replaces it after app
     assert.ok(replacement);
     assert.equal(replacement.reportsTo, 'captain-team');
     assert.deepEqual(replacement.model, { provider: 'deepseek', model: 'deepseek-flash' });
+  } finally {
+    if (previous === undefined) delete process.env.DSH_AGENT_ORG_FILE;
+    else process.env.DSH_AGENT_ORG_FILE = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('shared task board supports dependencies, revisions, and write-scope warnings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'agent-org-tasks-'));
+  const previous = process.env.DSH_AGENT_ORG_FILE;
+  process.env.DSH_AGENT_ORG_FILE = join(dir, 'org.json');
+  try {
+    const lead = makeAgent('session-root');
+    const { ctx, routes } = makeCtx(lead.agent, () => ({
+      childId: 'unused',
+      result: Promise.resolve({ output: [], stopReason: 'completed' }),
+      async dispose() {},
+    }));
+    const { apply } = await import('../index.js');
+    apply(ctx);
+    await waitFor(() => routes.length === 1 && lead.captured.tools.length >= 1);
+    const initial = await callRoute(routes[0], 'GET', undefined, { 'x-agent-org': '1' });
+    await callRoute(
+      routes[0],
+      'POST',
+      JSON.stringify({ revision: 0, org: seededOrg(initial.json.org) }),
+      { 'content-type': 'application/json', 'x-agent-org': '1' },
+    );
+    const create = lead.captured.tools.find((tool) => tool.name === 'team_task_create');
+    const list = lead.captured.tools.find((tool) => tool.name === 'team_task_list');
+    const update = lead.captured.tools.find((tool) => tool.name === 'team_task_update');
+    assert.ok(create && list && update);
+    const first = await create.execute(
+      { subject: '实现聊天模块', description: 'src/chat.js', writeScopes: ['src/chat.js'] },
+      { agent: lead.agent, signal: new AbortController().signal },
+    );
+    const second = await create.execute(
+      { subject: '接入聊天模块', dependsOn: [first.task.id], writeScopes: ['src/chat.js'] },
+      { agent: lead.agent, signal: new AbortController().signal },
+    );
+    assert.equal(first.task.status, 'pending');
+    assert.deepEqual(second.task.dependsOn, [first.task.id]);
+    const blocked = await update.execute(
+      { taskId: second.task.id, expectedRevision: second.task.revision, action: 'claim' },
+      { agent: lead.agent, signal: new AbortController().signal },
+    ).then(() => null, (error) => error);
+    assert.ok(blocked);
+    assert.match(blocked.message, /依赖/);
+    const claimed = await update.execute(
+      { taskId: first.task.id, expectedRevision: first.task.revision, action: 'claim' },
+      { agent: lead.agent, signal: new AbortController().signal },
+    );
+    assert.equal(claimed.task.status, 'in_progress');
+    const stale = await update.execute(
+      { taskId: first.task.id, expectedRevision: first.task.revision, action: 'complete', result: 'done' },
+      { agent: lead.agent, signal: new AbortController().signal },
+    ).then(() => null, (error) => error);
+    assert.ok(stale);
+    assert.match(stale.message, /revision/);
+    await update.execute(
+      { taskId: first.task.id, expectedRevision: claimed.task.revision, action: 'complete', result: 'done' },
+      { agent: lead.agent, signal: new AbortController().signal },
+    );
+    const ready = await update.execute(
+      { taskId: second.task.id, expectedRevision: second.task.revision, action: 'claim' },
+      { agent: lead.agent, signal: new AbortController().signal },
+    );
+    assert.equal(ready.task.status, 'in_progress');
+    const listed = await list.execute({}, { agent: lead.agent, signal: new AbortController().signal });
+    assert.ok(listed.tasks.length >= 2);
   } finally {
     if (previous === undefined) delete process.env.DSH_AGENT_ORG_FILE;
     else process.env.DSH_AGENT_ORG_FILE = previous;

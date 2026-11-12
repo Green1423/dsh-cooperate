@@ -16,6 +16,8 @@ import defaultData from './content/defaults.json' with { type: 'json' };
 
 export const ORG_VERSION = 1;
 export const MAX_ROLES = 80;
+export const MAX_TASKS = 256;
+export const TASK_STATUSES = ['pending', 'in_progress', 'completed', 'deleted'];
 export const ROLE_LEVELS = ['captain', 'member'];
 export const ROLE_EFFORTS = ['minimal', 'off', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const MAX_ROLE_SKILLS = 8;
@@ -99,6 +101,40 @@ function defaultTemplate(template) {
   };
 }
 
+/** Normalize a workspace-relative write scope. Returns null for absolute/escaping paths. */
+export function normalizeWriteScope(value) {
+  let scope = String(value ?? '').trim().replaceAll('\\', '/');
+  if (scope === '') return null;
+  while (scope.startsWith('./')) scope = scope.slice(2);
+  scope = scope.replace(/\/+/g, '/').replace(/\/$/, '');
+  if (scope === '' || scope.startsWith('/') || scope.split('/').includes('..')) return null;
+  return scope.slice(0, 120);
+}
+
+/** Whether every dependency of a pending task is completed. */
+export function taskReady(task, tasks) {
+  const byId = new Map(tasks.map((item) => [item.id, item]));
+  return (task.dependsOn ?? []).every((id) => byId.get(id)?.status === 'completed');
+}
+
+/** Pairwise write-scope overlaps among in-progress tasks; advisory only. */
+export function taskScopeWarnings(tasks) {
+  const active = tasks.filter((task) => task.status === 'in_progress');
+  const warnings = [];
+  for (let left = 0; left < active.length; left += 1) {
+    for (let right = left + 1; right < active.length; right += 1) {
+      const a = active[left];
+      const b = active[right];
+      if ((a.writeScopes ?? []).some((scopeA) => (b.writeScopes ?? []).some((scopeB) => (
+        scopeA === scopeB || scopeA.startsWith(`${scopeB}/`) || scopeB.startsWith(`${scopeA}/`)
+      )))) {
+        warnings.push(`任务 ${a.id} 与 ${b.id} 的写范围重叠`);
+      }
+    }
+  }
+  return warnings;
+}
+
 export function createDefaultOrg() {
   return {
     version: ORG_VERSION,
@@ -117,6 +153,7 @@ export function createDefaultOrg() {
     relations: [],
     helpRequests: [],
     failureReports: [],
+    tasks: [],
     activeTask: null,
     layout: {},
     audit: [],
@@ -680,6 +717,88 @@ export function validateOrg(input) {
     }
   }
 
+  const tasks = [];
+  const rawTasks = input.tasks === undefined ? [] : input.tasks;
+  if (!Array.isArray(rawTasks)) {
+    pushIssue(issues, 'tasks', 'tasks 必须是数组');
+  } else {
+    if (rawTasks.length > MAX_TASKS) pushIssue(issues, 'tasks', `任务不能超过 ${MAX_TASKS} 条`);
+    const taskRoleIds = new Set(['lead', ...roles.map((role) => role.id)]);
+    const seenTaskIds = new Set();
+    for (const [index, rawTask] of rawTasks.slice(-MAX_TASKS).entries()) {
+      const base = `tasks[${index}]`;
+      if (!isObject(rawTask)) {
+        pushIssue(issues, base, '任务必须是对象');
+        continue;
+      }
+      const id = text(rawTask.id);
+      if (!/^task-\d{1,9}$/.test(id) || seenTaskIds.has(id)) {
+        pushIssue(issues, `${base}.id`, '任务 id 无效或重复');
+        continue;
+      }
+      seenTaskIds.add(id);
+      const subject = text(rawTask.subject).slice(0, 120);
+      if (subject.length < 1) pushIssue(issues, `${base}.subject`, '任务标题不能为空');
+      const description = text(rawTask.description).slice(0, 2000);
+      const status = text(rawTask.status) || 'pending';
+      if (!TASK_STATUSES.includes(status)) pushIssue(issues, `${base}.status`, '任务状态无效');
+      const ownerId = text(rawTask.ownerId);
+      if (ownerId !== '' && !taskRoleIds.has(ownerId)) pushIssue(issues, `${base}.ownerId`, '任务负责人必须是现有成员');
+      if (status === 'in_progress' && ownerId === '') pushIssue(issues, `${base}.ownerId`, '进行中的任务必须有负责人');
+      const createdBy = text(rawTask.createdBy);
+      if (createdBy !== '' && !taskRoleIds.has(createdBy)) pushIssue(issues, `${base}.createdBy`, '任务创建人必须是现有成员');
+      const dependsOn = Array.isArray(rawTask.dependsOn) ? [...new Set(rawTask.dependsOn.map((item) => text(item)).filter(Boolean))].slice(0, 32) : [];
+      if (dependsOn.includes(id)) pushIssue(issues, `${base}.dependsOn`, '任务不能依赖自身');
+      const rawScopes = Array.isArray(rawTask.writeScopes) ? rawTask.writeScopes : [];
+      if (rawScopes.length > 20) pushIssue(issues, `${base}.writeScopes`, '写范围不能超过 20 条');
+      const writeScopes = [...new Set(rawScopes.map(normalizeWriteScope).filter(Boolean))].slice(0, 20);
+      if (writeScopes.length !== rawScopes.filter((item) => String(item ?? '').trim() !== '').length) {
+        pushIssue(issues, `${base}.writeScopes`, '写范围必须是不越出工作区的相对路径');
+      }
+      const revision = Number(rawTask.revision);
+      if (!Number.isSafeInteger(revision) || revision < 1) pushIssue(issues, `${base}.revision`, '任务 revision 必须是正整数');
+      const createdAt = typeof rawTask.createdAt === 'string' && Number.isFinite(Date.parse(rawTask.createdAt))
+        ? new Date(Date.parse(rawTask.createdAt)).toISOString() : new Date(0).toISOString();
+      const updatedAt = typeof rawTask.updatedAt === 'string' && Number.isFinite(Date.parse(rawTask.updatedAt))
+        ? new Date(Date.parse(rawTask.updatedAt)).toISOString() : createdAt;
+      tasks.push({
+        id,
+        subject,
+        description,
+        status,
+        ownerId,
+        dependsOn,
+        writeScopes,
+        revision,
+        createdBy,
+        result: text(rawTask.result).slice(0, 2000),
+        createdAt,
+        updatedAt,
+      });
+    }
+    // Dependency existence and cycle checks require the full task set.
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    for (const task of tasks) {
+      for (const dep of task.dependsOn) {
+        if (!taskById.has(dep)) pushIssue(issues, `tasks.${task.id}.dependsOn`, `找不到依赖任务 "${dep}"`);
+      }
+      const visiting = new Set();
+      const visited = new Set();
+      const visit = (node) => {
+        if (node === undefined || visited.has(node.id)) return false;
+        if (visiting.has(node.id)) return true;
+        visiting.add(node.id);
+        for (const dependencyId of node.dependsOn) {
+          if (visit(taskById.get(dependencyId))) return true;
+        }
+        visiting.delete(node.id);
+        visited.add(node.id);
+        return false;
+      };
+      if (visit(task)) pushIssue(issues, `tasks.${task.id}`, '任务依赖存在循环');
+    }
+  }
+
   // References and cycles are checked after the whole roster is known.
   const byId = new Map(roles.map((role) => [role.id, role]));
   for (const role of roles) {
@@ -718,6 +837,7 @@ export function validateOrg(input) {
       relations,
       helpRequests,
       failureReports,
+      tasks,
       activeTask,
       layout,
       audit,
