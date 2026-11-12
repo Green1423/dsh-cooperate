@@ -646,12 +646,28 @@ export function apply(ctx) {
     // persona/system prompt, and inheriting it would send the lead identity to
     // every member. The standard create path supplies the deployment default
     // model without copying another session's identity.
-    const created = await createInternalSession({
-      cwd: workspace.path,
-      sessionId,
-    });
-    const createdSessionId = created.sessionId ?? sessionId;
-    employeeSessionIds.add(createdSessionId);
+    let createdSessionId;
+    if (role.contextMode === 'fork' && typeof leadSessionId === 'string' && leadSessionId !== ''
+      && typeof ctx.sessions?.fork === 'function') {
+      const source = ctx.sessions.get(leadSessionId);
+      if (source === undefined) {
+        throw new Error('无法 fork 组长上下文：组长会话当前不在线；可先把成员上下文改为 fresh 或重试。');
+      }
+      let boundary;
+      for (const event of source.snapshotEvents()) {
+        if (event.type === 'turn/end') boundary = event.seq;
+      }
+      const forked = ctx.sessions.fork(source, boundary, sessionId);
+      createdSessionId = forked.id;
+      employeeSessionIds.add(createdSessionId);
+    } else {
+      const created = await createInternalSession({
+        cwd: workspace.path,
+        sessionId,
+      });
+      createdSessionId = created.sessionId ?? sessionId;
+      employeeSessionIds.add(createdSessionId);
+    }
     const resolved = await ctx.sessionController.agents.resolveAgent(createdSessionId);
     if ('error' in resolved) {
       throw new Error(`无法解析新建员工会话：${resolved.error.code}`);
@@ -3756,6 +3772,7 @@ export function apply(ctx) {
           title: { type: 'string', description: '新成员的职位，例如「软件工程师」「合规」。' },
           name: { type: 'string', description: '可选姓名；省略时按「职位-编号」生成。' },
           level: { type: 'string', enum: ['captain', 'member'], description: '同一岗位可选队长 captain 或队员 member；默认 member。' },
+          contextMode: { type: 'string', enum: ['fresh', 'fork'], description: 'fresh=不继承组长历史；fork=从组长已完成轮次 fork。默认 fresh。' },
           responsibilities: { type: 'string', description: '成员的职责范围。' },
           instructions: { type: 'string', description: '写入成员会话的身份提示词和工作准则。' },
           authority: { type: 'string', description: '该成员具体可决定/负责的事项，例如文件/模块范围、接口、验收或审批权；不能只写泛化职责。' },
@@ -3812,6 +3829,7 @@ export function apply(ctx) {
         if (authority.length < 2 || authority.length > 300) throw new Error('具体职权需要 2–300 个字符');
         if (boundaries.length < 2 || boundaries.length > 300) throw new Error('禁止边界需要 2–300 个字符');
         const level = typeof args.level === 'string' && ROLE_LEVELS.includes(args.level.trim()) ? args.level.trim() : 'member';
+        const contextMode = args.contextMode === 'fork' ? 'fork' : 'fresh';
         const name = typeof args.name === 'string' && args.name.trim() !== ''
           ? args.name.trim()
           : defaultMemberName(store.current, title);
@@ -3834,6 +3852,7 @@ export function apply(ctx) {
             name,
             title,
             level,
+            contextMode,
             reportsTo,
             enabled: true,
             accent: palette[current.roles.length % palette.length],

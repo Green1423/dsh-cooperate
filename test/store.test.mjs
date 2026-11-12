@@ -113,3 +113,27 @@ test('concurrent store instances serialize writes and one observes a revision co
     assert.ok(['A 组', 'B 组'].includes(disk.teamName));
   });
 });
+
+test('journal snapshot recovers roster and task state when the top-level cache is tampered', async () => {
+  await withStore(async ({ file }) => {
+    const store = createOrgStore({ file });
+    await store.load();
+    const org = createDefaultOrg();
+    org.teamName = '日志小组';
+    org.tasks = [{
+      id: 'task-1', subject: '持久任务', description: '', status: 'pending', ownerId: '',
+      dependsOn: [], writeScopes: [], revision: 1, createdBy: 'lead', result: '',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    }];
+    await store.save(0, org);
+    const onDisk = JSON.parse(await readFile(file, 'utf8'));
+    assert.ok(Array.isArray(onDisk.journal) && onDisk.journal.length === 1);
+    onDisk.teamName = '被篡改的缓存';
+    onDisk.tasks = [];
+    await writeFile(file, JSON.stringify(onDisk), 'utf8');
+    const recovered = createOrgStore({ file });
+    const loaded = await recovered.load();
+    assert.equal(loaded.teamName, '日志小组');
+    assert.equal(loaded.tasks[0].subject, '持久任务');
+  });
+});

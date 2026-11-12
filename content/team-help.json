@@ -64,7 +64,7 @@
         "lead"
       ],
       "purpose": "创建成员并写入具体职权、边界和模型",
-      "args": "title/responsibilities/instructions/authority/boundaries/provider/model/reason",
+      "args": "title/responsibilities/authority/boundaries/instructions/contextMode/provider/model/reason",
       "when": "缺岗位时"
     },
     {

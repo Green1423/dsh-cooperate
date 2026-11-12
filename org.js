@@ -154,6 +154,7 @@ export function createDefaultOrg() {
     helpRequests: [],
     failureReports: [],
     tasks: [],
+    journal: [],
     activeTask: null,
     layout: {},
     audit: [],
@@ -333,6 +334,8 @@ export function validateOrg(input) {
 
     const level = text(rawRole.level) || 'member';
     if (!ROLE_LEVELS.includes(level)) pushIssue(issues, `${base}.level`, '角色级别必须是 captain 或 member');
+    const contextMode = text(rawRole.contextMode) || 'fresh';
+    if (!['fresh', 'fork'].includes(contextMode)) pushIssue(issues, `${base}.contextMode`, '成员上下文模式必须是 fresh 或 fork');
 
     const rawEffort = text(rawRole.effort).toLowerCase();
     const effort = normalizeEffort(rawEffort);
@@ -417,6 +420,7 @@ export function validateOrg(input) {
       title,
       reportsTo,
       level,
+      contextMode,
       effort,
       authority,
       boundaries,
@@ -838,6 +842,7 @@ export function validateOrg(input) {
       helpRequests,
       failureReports,
       tasks,
+      journal: Array.isArray(input.journal) ? input.journal.slice(-20) : [],
       activeTask,
       layout,
       audit,
@@ -1051,6 +1056,7 @@ export function buildEmployeeIdentityPrompt(org, role, workspace) {
     roleTitle: role.title,
     level: levelLabel(role.level),
     effort: role.effort || 'low',
+    contextMode: role.contextMode === 'fork' ? 'fork（继承组长已完成轮次）' : 'fresh（独立上下文）',
     manager,
     workspacePath: workspace?.path ?? promptData.text.workspacePathFallback,
     responsibilities: role.responsibilities || promptData.text.responsibilitiesFallback,
@@ -1118,5 +1124,7 @@ export function buildRoleTaskPrompt(org, role, task, workspace) {
 
 /** JSON-safe snapshot for the browser and tool results. */
 export function publicOrg(org) {
-  return clone(org);
+  const value = clone(org);
+  delete value.journal;
+  return value;
 }

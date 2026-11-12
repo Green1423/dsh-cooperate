@@ -240,6 +240,7 @@
     "- 名称：{{roleName}}",
     "- 职位：{{roleTitle}}",
     "- 级别：{{level}}",
+    "- 上下文模式：{{contextMode}}",
     "- 思考强度：{{effort}}",
     "- 汇报对象：{{manager}}",
     "- 工作区：{{workspacePath}}（所有文件操作以它为根）",
@@ -425,7 +426,8 @@
     "names": "直属下级姓名列表",
     "title": "工作区标题",
     "path": "工作区路径",
-    "id": "委派编号"
+    "id": "委派编号",
+    "contextMode": "成员上下文模式（fresh 或 fork）"
   },
   "scopeUpdate": [
     "## 职权更新",

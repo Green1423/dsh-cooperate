@@ -70,6 +70,18 @@ async function readDisk(file) {
   return { kind: 'ok', org: result.org };
 }
 
+/** Rehydrate the latest committed journal snapshot; top-level fields are a cache. */
+function hydrateJournal(org) {
+  if (!Array.isArray(org?.journal) || org.journal.length === 0) return org;
+  for (let index = org.journal.length - 1; index >= 0; index -= 1) {
+    const snapshot = org.journal[index]?.snapshot;
+    if (snapshot === null || typeof snapshot !== 'object') continue;
+    const validated = validateOrg(snapshot);
+    if (validated.ok) return { ...validated.org, journal: org.journal.slice(-20) };
+  }
+  return org;
+}
+
 async function acquireFileLock(file) {
   const lockPath = `${file}.lock`;
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
@@ -133,7 +145,7 @@ export function createOrgStore(options = {}) {
     loaded = true;
     const disk = await readDisk(file);
     if (disk.kind === 'ok') {
-      org = migrateLegacyHr(disk.org);
+      org = hydrateJournal(migrateLegacyHr(disk.org));
       warning = null;
       degraded = false;
       configured = true;
@@ -162,7 +174,7 @@ export function createOrgStore(options = {}) {
     if (disk.kind === 'ok') {
       configured = true;
       if (disk.org.revision >= org.revision) {
-        org = migrateLegacyHr(disk.org);
+        org = hydrateJournal(migrateLegacyHr(disk.org));
         warning = null;
         degraded = false;
       }
@@ -237,6 +249,14 @@ export function createOrgStore(options = {}) {
           revision: base.revision + 1,
           updatedAt: now().toISOString(),
         };
+        const snapshot = { ...next };
+        delete snapshot.journal;
+        const journal = [...(base.journal ?? []), {
+          seq: (base.journal?.length ?? 0) + 1,
+          at: next.updatedAt,
+          snapshot,
+        }].slice(-20);
+        next.journal = journal;
         await writeAtomic(next);
         org = next;
         configured = true;

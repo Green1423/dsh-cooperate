@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-agent-org",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "description": "Workspace-scoped multi-agent organization for DSH: lead-first onboarding, direct hiring by the lead, named persistent employee sessions with injected roles, draggable relationship graph with temporary links, and archived-session lead handoff.",
   "type": "module",

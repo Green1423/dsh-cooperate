@@ -101,6 +101,13 @@ with its own onboarding flow.
   member-level engineers implement independent sections in parallel.
   Complex or user-facing projects must include a dedicated product designer;
   an engineer cannot double as the designer.
+- **Event journal** — every organization save appends a bounded full snapshot
+  to `org.journal`; load rehydrates the latest valid snapshot, so roster/task
+  state survives a tampered or partially stale top-level cache. This is an
+  organization-level journal, not a replacement for DSH's session projection.
+- **Fresh and fork members** — new members can use `fresh` context (independent
+  history) or `fork` context (inherit the lead's completed turns). Fork is
+  created only while the lead session is live; large contexts increase cost.
 - **Role editor** — add, edit, enable/disable, delete, and re-parent members;
   edit name, title, responsibilities, and full role prompt text.
 - **Organization patterns and web research** — the lead has five built-in

@@ -348,3 +348,15 @@ test('injected skills are rendered into the employee identity and task prompts',
   assert.doesNotMatch(task, /safe-change/);
   assert.match(task, /修改登录页/);
 });
+
+test('role context mode validates fresh and fork', () => {
+  const fresh = validateOrg(orgWith([sampleRole({ contextMode: 'fresh' })]));
+  assert.equal(fresh.ok, true);
+  assert.equal(fresh.org.roles[0].contextMode, 'fresh');
+  const forked = validateOrg(orgWith([sampleRole({ contextMode: 'fork' })]));
+  assert.equal(forked.ok, true);
+  assert.equal(forked.org.roles[0].contextMode, 'fork');
+  const invalid = validateOrg(orgWith([sampleRole({ contextMode: 'clone' })]));
+  assert.equal(invalid.ok, false);
+  assert.ok(invalid.issues.some((issue) => issue.message.includes('fresh 或 fork')));
+});
