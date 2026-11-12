@@ -4582,6 +4582,46 @@ export function apply(ctx) {
     return policy.some((item) => item.provider === provider && item.model === model);
   }
 
+  async function enforceTeamModelSelection(request) {
+    try {
+      const workspace = await resolveWorkspaceForSession(ctx, request.sessionId);
+      if (workspace === undefined) return;
+      const store = getWorkspaceStore(workspace);
+      await store.load();
+      if (!store.configured) return;
+      const role = store.current.roles.find((candidate) => candidate.sessionId === request.sessionId);
+      const lead = store.current.lead;
+      const isLead = lead.sessionId === request.sessionId || (role === undefined && lead.sessionId !== request.sessionId);
+      if (role !== undefined && role.model?.provider && role.model?.model) {
+        const assigned = role.model;
+        if (request.provider !== assigned.provider || request.model !== assigned.model
+          || (assigned.reasoningEffort !== undefined && request.reasoningEffort !== assigned.reasoningEffort)) {
+          throw new Error('模型选择被拒绝：成员模型由组长/队长统一分配，不能在成员会话内自行切换。');
+        }
+      }
+      if (isLead && !leadModelAllowed(lead.modelPolicy, request.provider, request.model)) {
+        throw new Error('模型选择被拒绝：该模型不在组长可选模型范围内。');
+      }
+      if (role === undefined && !isLead) return;
+      const catalog = await readHostModelCatalog();
+      const meta = (catalog.groups ?? [])
+        .find((group) => group.id === request.provider)?.models
+        ?.find((entry) => entry.id === request.model);
+      if (meta === undefined) {
+        throw new Error(`模型选择被拒绝：实时模型目录中找不到 ${request.provider}/${request.model}。`);
+      }
+      const efforts = meta.reasoning?.efforts ?? [];
+      if (typeof request.reasoningEffort === 'string' && request.reasoningEffort !== ''
+        && efforts.length > 0 && !efforts.some((effort) => effort.id === request.reasoningEffort)) {
+        throw new Error(`模型选择被拒绝：模型 ${request.provider}/${request.model} 不支持思考强度 ${request.reasoningEffort}。`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('模型选择被拒绝')) throw error;
+      console.warn('[agent-org] could not enforce model selection policy:', error);
+    }
+  }
+
+
   async function searchUserSkills(workspace, query) {
     const needleText = typeof query === 'string' ? query.trim() : '';
     let catalog = [];
@@ -4734,44 +4774,7 @@ export function apply(ctx) {
     const original = commands.selectModel.bind(commands);
     const wrapped = async (request) => {
       if (internalModelSelections > 0) return original(request);
-      try {
-        const workspace = await resolveWorkspaceForSession(ctx, request.sessionId);
-        if (workspace !== undefined) {
-          const store = getWorkspaceStore(workspace);
-          await store.load();
-          if (store.configured) {
-            const role = store.current.roles.find((candidate) => candidate.sessionId === request.sessionId);
-            if (role !== undefined && role.model?.provider && role.model?.model) {
-              const assigned = role.model;
-              if (request.provider !== assigned.provider || request.model !== assigned.model
-                || (assigned.reasoningEffort !== undefined && request.reasoningEffort !== assigned.reasoningEffort)) {
-                throw new Error('模型选择被拒绝：成员模型由组长/队长统一分配，不能在成员会话内自行切换。');
-              }
-            }
-            const isLead = store.current.lead.sessionId === request.sessionId;
-            if (isLead && !leadModelAllowed(store.current.lead.modelPolicy, request.provider, request.model)) {
-              throw new Error('模型选择被拒绝：该模型不在组长可选模型范围内。');
-            }
-            if (role !== undefined || isLead) {
-              const catalog = await readHostModelCatalog();
-              const meta = (catalog.groups ?? [])
-                .find((group) => group.id === request.provider)?.models
-                ?.find((entry) => entry.id === request.model);
-              if (meta === undefined) {
-                throw new Error(`模型选择被拒绝：实时模型目录中找不到 ${request.provider}/${request.model}。`);
-              }
-              const efforts = meta.reasoning?.efforts ?? [];
-              if (typeof request.reasoningEffort === 'string' && request.reasoningEffort !== ''
-                && efforts.length > 0 && !efforts.some((effort) => effort.id === request.reasoningEffort)) {
-                throw new Error(`模型选择被拒绝：模型 ${request.provider}/${request.model} 不支持思考强度 ${request.reasoningEffort}。`);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('模型选择被拒绝')) throw error;
-        console.warn('[agent-org] could not enforce model selection policy:', error);
-      }
+      await enforceTeamModelSelection(request);
       const result = await original(request);
       await rememberModelSelection(request.sessionId, result?.selected);
       return result;
@@ -4781,6 +4784,21 @@ export function apply(ctx) {
       if (commands.selectModel === wrapped) commands.selectModel = original;
     };
   }, 'agent-org:lead-model-policy');
+
+  ctx.effect(() => {
+    const controller = ctx.sessionController;
+    if (controller === undefined || typeof controller.selectModel !== 'function') return undefined;
+    const original = controller.selectModel.bind(controller);
+    const wrapped = async (request) => {
+      if (internalModelSelections > 0) return original(request);
+      await enforceTeamModelSelection(request);
+      return original(request);
+    };
+    controller.selectModel = wrapped;
+    return () => {
+      if (controller.selectModel === wrapped) controller.selectModel = original;
+    };
+  }, 'agent-org:controller-model-policy');
 
   ctx.effect(() => {
     const disposeRoute = ctx.webServer.register({

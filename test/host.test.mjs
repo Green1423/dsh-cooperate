@@ -230,6 +230,9 @@ function makeCtx(rootAgent, activationFactory) {
       },
     },
     sessionController: {
+      async selectModel(request) {
+        return ctx.sessionController.commands.selectModel(request);
+      },
       async create(request) {
         createRequests.push(request);
         return ctx.sessionController.commands.create(request);
@@ -1831,6 +1834,20 @@ test('lead model policy limits the models the lead can select', async () => {
     );
     assert.equal(policy.status, 200);
     assert.deepEqual(policy.json.org.lead.modelPolicy, [{ provider: 'deepseek', model: 'deepseek-flash' }]);
+    const bypass = await ctx.sessionController.commands.selectModel({
+      sessionId: 'session-root',
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+    }).then(() => null, (error) => error);
+    assert.ok(bypass);
+    assert.match(bypass.message, /组长可选模型范围/);
+    const controllerBypass = await ctx.sessionController.selectModel({
+      sessionId: 'session-root',
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+    }).then(() => null, (error) => error);
+    assert.ok(controllerBypass);
+    assert.match(controllerBypass.message, /组长可选模型范围/);
     const modelTool = lead.captured.tools.find((tool) => tool.name === 'team_select_model');
     assert.ok(modelTool);
     const listed = await modelTool.execute({}, { agent: lead.agent, signal: new AbortController().signal });
