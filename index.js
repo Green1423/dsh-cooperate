@@ -3772,7 +3772,7 @@ export function apply(ctx) {
           title: { type: 'string', description: '新成员的职位，例如「软件工程师」「合规」。' },
           name: { type: 'string', description: '可选姓名；省略时按「职位-编号」生成。' },
           level: { type: 'string', enum: ['captain', 'member'], description: '同一岗位可选队长 captain 或队员 member；默认 member。' },
-          contextMode: { type: 'string', enum: ['fresh', 'fork'], description: 'fresh=不继承组长历史；fork=从组长已完成轮次 fork。默认 fresh。' },
+          contextMode: { type: 'string', enum: ['fresh', 'fork'], description: '默认 fresh；仅当成员需要读取与组长相同的文件/实现上下文时才用 fork（从组长已完成轮次 fork）。' },
           responsibilities: { type: 'string', description: '成员的职责范围。' },
           instructions: { type: 'string', description: '写入成员会话的身份提示词和工作准则。' },
           authority: { type: 'string', description: '该成员具体可决定/负责的事项，例如文件/模块范围、接口、验收或审批权；不能只写泛化职责。' },

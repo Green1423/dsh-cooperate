@@ -105,9 +105,10 @@ with its own onboarding flow.
   to `org.journal`; load rehydrates the latest valid snapshot, so roster/task
   state survives a tampered or partially stale top-level cache. This is an
   organization-level journal, not a replacement for DSH's session projection.
-- **Fresh and fork members** — new members can use `fresh` context (independent
-  history) or `fork` context (inherit the lead's completed turns). Fork is
-  created only while the lead session is live; large contexts increase cost.
+- **Fresh and fork members** — new members use `fresh` context by default. Use
+  `fork` only when the member must read the same files or shared implementation
+  context as the lead; independent modules stay fresh. Fork is created only
+  while the lead session is live and increases context cost.
 - **Role editor** — add, edit, enable/disable, delete, and re-parent members;
   edit name, title, responsibilities, and full role prompt text.
 - **Organization patterns and web research** — the lead has five built-in

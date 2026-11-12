@@ -277,6 +277,7 @@
     "任何委派、人事或关系变更都必须写 reason；组长和队长只能管理直属成员。",
     "前端/界面测试必须用无头浏览器操作并截图，不能只用源码或单测断言。",
     "共享任务板用 revision CAS；依赖未完成不能 claim，writeScopes 重叠只警告不锁文件。",
-    "team_assign 可 wait=false 立即返回 runId；用 team_wait 等待，用 team_interrupt 停止卡死轮次。"
+    "team_assign 可 wait=false 立即返回 runId；用 team_wait 等待，用 team_interrupt 停止卡死轮次。",
+    "成员上下文默认 fresh；只有需要读取同一批文件/共享实现上下文时才 fork。"
   ]
 }
