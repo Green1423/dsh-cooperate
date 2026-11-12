@@ -416,6 +416,7 @@ export function apply(ctx) {
   experienceStore = createExperienceStore();
   console.info('[agent-org] loaded');
   const runs = makeRunRecorder();
+  const assignmentControllers = new Map();
   let internalSessionCreations = 0;
   let internalModelSelections = 0;
   async function createInternalSession(request) {
@@ -1384,10 +1385,10 @@ export function apply(ctx) {
     };
   }
 
-  async function performAssignment({ store, workspace, org, role, caller, task, signal, delegatorName, delegatorRoleId = '' }) {
+  async function performAssignment({ store, workspace, org, role, caller, task, signal, delegatorName, delegatorRoleId = '', run: providedRun }) {
     const startedAt = Date.now();
     const scopedTask = `workspace=${workspace.path}\n${task}`;
-    const run = runs.start({
+    const run = providedRun ?? runs.start({
       workspaceId: workspace.id,
       role,
       task: scopedTask,
@@ -1430,6 +1431,7 @@ export function apply(ctx) {
         durationMs,
       };
       if (diagnostic !== '') value.diagnostic = diagnostic;
+      value.runId = run.id;
       return value;
     } catch (error) {
       const durationMs = Date.now() - startedAt;
@@ -1440,6 +1442,53 @@ export function apply(ctx) {
         ? `组员“${role.name}”的本次轮次随委派轮次一起被用户中止；成员会话已保留，可以重新委派继续。`
         : `组员“${role.name}”执行失败：${message}`);
     }
+  }
+
+  function launchAssignment({ store, workspace, org, role, caller, task, signal, delegatorName, delegatorRoleId = '', wait }) {
+    const scopedTask = `workspace=${workspace.path}\n${task}`;
+    const controller = new AbortController();
+    const run = runs.start({
+      workspaceId: workspace.id,
+      role,
+      task: scopedTask,
+      agent: caller,
+      childSessionId: typeof role.sessionId === 'string' ? role.sessionId : '',
+      delegatorName,
+      delegatorRoleId,
+    });
+    assignmentControllers.set(run.id, controller);
+    const linkedSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
+    const promise = performAssignment({
+      store,
+      workspace,
+      org,
+      role,
+      caller,
+      task,
+      signal: linkedSignal,
+      delegatorName,
+      delegatorRoleId,
+      run,
+    }).finally(() => {
+      assignmentControllers.delete(run.id);
+    });
+    if (wait !== false) {
+      return promise.then((value) => ({ ...value, runId: run.id, waitedForAll: false }));
+    }
+    promise.catch((error) => {
+      console.warn(`[agent-org] background assignment ${run.id} failed:`, errorMessage(error));
+    });
+    return Promise.resolve({
+      runId: run.id,
+      roleId: role.id,
+      roleName: role.name,
+      roleTitle: role.title,
+      childSessionId: String(role.sessionId ?? ''),
+      status: 'running',
+      summary: `已启动委派 ${run.id}；使用 team_wait 等待结果，或稍后查看活动记录。`,
+      durationMs: 0,
+      waitedForAll: false,
+    });
   }
 
   async function waitForAllAssignments(workspaceId, signal) {
@@ -3095,6 +3144,7 @@ export function apply(ctx) {
           role: { type: 'string', description: '直属下级的 id/姓名/职位。' },
           task: { type: 'string', description: '紧凑任务字段：goal=...; workspace=<绝对路径>; files=...; accept=...; deps=...。' },
           reason: { type: 'string', description: '为什么把这项工作安排给该直属下级；必填。' },
+          wait: { type: 'boolean', description: '是否等待成员完成；默认 true。false 时立即返回 runId，用 team_wait 取结果。' },
           waitForAll: { type: 'boolean', description: '可选：是否等当前工作区所有正在运行的委派都完成后再返回，默认 false（只等本次）。' },
         },
         required: ['role', 'task', 'reason'],
@@ -3108,11 +3158,12 @@ export function apply(ctx) {
             roleName: { type: 'string' },
             roleTitle: { type: 'string' },
             childSessionId: { type: 'string' },
-            status: { type: 'string', enum: ['completed', 'failed', 'aborted'] },
+            status: { type: 'string', enum: ['running', 'completed', 'failed', 'aborted'] },
             summary: { type: 'string' },
             diagnostic: { type: 'string' },
             durationMs: { type: 'integer' },
             waitedForAll: { type: 'boolean' },
+            runId: { type: 'string' },
           },
           required: ['roleId', 'roleName', 'roleTitle', 'childSessionId', 'status', 'summary', 'durationMs', 'waitedForAll'],
         },
@@ -3147,16 +3198,17 @@ export function apply(ctx) {
         if (task.length < 3) throw new Error('任务说明不能为空');
         const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
         if (reason.length < 2) throw new Error('工作安排必须填写 reason（至少 2 个字符）。');
-        const value = await performAssignment({
+        const value = await launchAssignment({
           store,
           workspace,
           org,
           role,
           caller,
           task,
-          signal: exec.signal,
+          signal: args.wait === false ? undefined : exec.signal,
           delegatorName: currentCaller.name,
           delegatorRoleId: currentCaller.id,
+          wait: args.wait !== false,
         });
         if (args.waitForAll === true) await waitForAllAssignments(workspace.id, exec.signal);
         value.waitedForAll = args.waitForAll === true;
@@ -3876,6 +3928,7 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createMyReportsTool(employee)));
       disposers.push(agent.ctx.tools.register(createHelpRequestTool(employee)));
       for (const tool of createTaskTools(employee)) disposers.push(agent.ctx.tools.register(tool));
+      for (const tool of createAssignmentControlTools(employee)) disposers.push(agent.ctx.tools.register(tool));
       installations.set(agent, disposers);
       ensureCaptainTools(agent, employee);
     } finally {
@@ -4104,6 +4157,99 @@ export function apply(ctx) {
     return [create, list, update];
   }
 
+  function createAssignmentControlTools(employee) {
+    const { store, workspace } = employee;
+    const runViewSchema = {
+      type: 'object', additionalProperties: false,
+      properties: {
+        id: { type: 'string' }, roleId: { type: 'string' }, roleName: { type: 'string' },
+        status: { type: 'string' }, summary: { type: 'string' }, diagnostic: { type: 'string' },
+        durationMs: { type: 'integer' },
+      },
+      required: ['id', 'roleId', 'roleName', 'status', 'summary', 'durationMs'],
+    };
+    const view = (run) => ({
+      id: run.id, roleId: run.roleId, roleName: run.roleName, status: run.status,
+      summary: run.summary ?? '', ...(run.diagnostic ? { diagnostic: run.diagnostic } : {}),
+      durationMs: Number(run.durationMs ?? 0),
+    });
+    const wait = {
+      name: 'team_wait',
+      description: 'Wait for running assignments in this workspace to change or finish. Returns the current runs and timedOut; it does not start or resume members.',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          runIds: { type: 'array', items: { type: 'string' }, description: '可选：只等待这些 run id；省略则等待本工作区任意运行中委派。' },
+          timeoutMs: { type: 'integer', description: '等待毫秒数，1000–300000，默认 30000。' },
+        },
+        required: [],
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { timedOut: { type: 'boolean' }, runs: { type: 'array', items: runViewSchema } }, required: ['timedOut', 'runs'] },
+        render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }]; },
+      },
+      isConcurrencySafe: () => true,
+      presentCall() { return { card: 'generic', title: '等待委派', kind: 'other' }; },
+      async execute(args, exec) {
+        await store.refresh();
+        if (!store.configured || !store.current.enabled) throw new Error('协作组尚未启用。');
+        const ids = Array.isArray(args.runIds) ? new Set(args.runIds.map((item) => String(item ?? '').trim()).filter(Boolean)) : null;
+        const timeoutMs = Math.max(1000, Math.min(300000, Number(args.timeoutMs) || 30000));
+        const running = () => runs.snapshot(workspace.id).filter((run) => run.status === 'running' && (ids === null || ids.has(run.id)));
+        const initial = running();
+        if (initial.length === 0) return { timedOut: true, runs: runs.snapshot(workspace.id).filter((run) => ids === null || ids.has(run.id)).map(view) };
+        const started = Date.now();
+        while (Date.now() - started < timeoutMs) {
+          if (exec.signal?.aborted) throw new Error('等待委派时被中止。');
+          if (running().length === 0) return { timedOut: false, runs: runs.snapshot(workspace.id).filter((run) => ids === null || ids.has(run.id)).map(view) };
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        return { timedOut: true, runs: runs.snapshot(workspace.id).filter((run) => ids === null || ids.has(run.id)).map(view) };
+      },
+    };
+    const interrupt = {
+      name: 'team_interrupt',
+      description: 'Interrupt one running assignment. The lead may interrupt any run in this workspace; a captain may interrupt only runs it delegated. The member session and queued work are preserved.',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: { runId: { type: 'string', description: '要中断的 run id。' } },
+        required: ['runId'],
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { runId: { type: 'string' }, interrupted: { type: 'boolean' }, status: { type: 'string' }, summary: { type: 'string' } }, required: ['runId', 'interrupted', 'status', 'summary'] },
+        render(_args, value) { return [{ type: 'text', text: value.summary }]; },
+      },
+      isConcurrencySafe: () => false,
+      presentCall(args) { return { card: 'generic', title: `中断委派：${args.runId ?? ''}`, kind: 'other', rawInput: args }; },
+      async execute(args, exec) {
+        const caller = exec.agent;
+        if (caller === undefined) throw new Error('team_interrupt 需要一个成员会话。');
+        await store.refresh();
+        if (!store.configured || !store.current.enabled) throw new Error('协作组尚未启用。');
+        const runId = typeof args.runId === 'string' ? args.runId.trim() : '';
+        const run = runs.snapshot(workspace.id).find((item) => item.id === runId);
+        if (run === undefined) throw new Error(`找不到委派 ${runId}。`);
+        const isLead = store.current.lead.sessionId === caller.session.id;
+        if (!isLead && run.parentSessionId !== caller.session.id) throw new Error('只有组长或该委派的发起者可以中断。');
+        const controller = assignmentControllers.get(runId);
+        if (controller === undefined || run.status !== 'running') {
+          return { runId, interrupted: false, status: run.status, summary: `委派 ${runId} 当前不是运行中状态。` };
+        }
+        controller.abort(new Error('用户/组长中断委派'));
+        const started = Date.now();
+        while (Date.now() - started < 3000) {
+          const current = runs.snapshot(workspace.id).find((item) => item.id === runId);
+          if (current?.status !== 'running') {
+            return { runId, interrupted: true, status: current.status, summary: `已中断委派 ${runId}（${current.status}）。` };
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return { runId, interrupted: true, status: 'aborting', summary: `已请求中断委派 ${runId}，等待成员会话收尾。` };
+      },
+    };
+    return [wait, interrupt];
+  }
+
   async function installLead(agent) {
     if (disposed || installing.has(agent)) return;
     const employee = await resolveEmployeeContext(agent);
@@ -4202,7 +4348,8 @@ export function apply(ctx) {
                 '紧凑任务字段：goal=...; scope=...; files=...; accept=...; deps=...。组员看不到当前会话历史，必须自包含。',
             },
             reason: { type: 'string', description: '为什么把这项工作安排给该成员；必填。' },
-            waitForAll: { type: 'boolean', description: '可选：是否等当前工作区所有正在运行的委派都完成后再返回，默认 false（只等本次）。' },
+            wait: { type: 'boolean', description: '是否等待成员完成；默认 true。false 时立即返回 runId，用 team_wait 取结果。' },
+          waitForAll: { type: 'boolean', description: '可选：是否等当前工作区所有正在运行的委派都完成后再返回，默认 false（只等本次）。' },
           },
           required: ['role', 'task', 'reason'],
         },
@@ -4276,15 +4423,16 @@ export function apply(ctx) {
           const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
           if (reason.length < 2) throw new Error('工作安排必须填写 reason（至少 2 个字符）。');
 
-          const value = await performAssignment({
+          const value = await launchAssignment({
             store,
             workspace,
             org,
             role,
             caller,
             task,
-            signal: exec.signal,
+            signal: args.wait === false ? undefined : exec.signal,
             delegatorName: org.lead.label,
+            wait: args.wait !== false,
           });
           if (args.waitForAll === true) await waitForAllAssignments(workspace.id, exec.signal);
           value.waitedForAll = args.waitForAll === true;
@@ -4302,6 +4450,7 @@ export function apply(ctx) {
       disposers.push(agent.ctx.tools.register(createHrTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createScopeTool({ store })));
       for (const tool of createTaskTools({ store, workspace })) disposers.push(agent.ctx.tools.register(tool));
+      for (const tool of createAssignmentControlTools({ store, workspace })) disposers.push(agent.ctx.tools.register(tool));
       disposers.push(agent.ctx.tools.register(createModuleGroupTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createFireTool({ store, workspace })));
       disposers.push(agent.ctx.tools.register(createSkillSearchTool({ store, workspace })));

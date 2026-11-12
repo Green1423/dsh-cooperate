@@ -80,6 +80,10 @@ with its own onboarding flow.
   temporary relation can expire at a chosen time or remain until removed;
   expired relations disappear from prompt context but stay visible/removable
   in the graph.
+- **Async delegation and recovery** — `team_assign(wait=false)` returns a
+  `runId` immediately; `team_wait` waits for completion; `team_interrupt` stops
+  only the running turn and preserves the member session and queue. Runs remain
+  in-memory and are cleared by a Host restart.
 - **Shared task board** — the Team Org panel has a **Tasks** tab backed by
   persistent shared tasks with revision CAS, dependencies, owner claim/release,
   and advisory write-scope overlap warnings. Tasks are managed by the

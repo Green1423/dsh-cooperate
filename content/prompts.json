@@ -139,7 +139,7 @@
       "",
       "### 任务计时",
       "",
-      "每个新任务在拆解前用 team_task_start 填写一句话标题并开始计时；子问题不重复开始。最终交付或中止前用 team_task_finish 结束，面板显示标题和总用时。\n- 并行/接力工作先用 team_task_create 建共享任务，依赖完成前不得 claim；claim/complete 必须带 expectedRevision，writeScopes 重叠只警告不锁文件。",
+      "每个新任务在拆解前用 team_task_start 填写一句话标题并开始计时；子问题不重复开始。最终交付或中止前用 team_task_finish 结束，面板显示标题和总用时。\n- 并行/接力工作先用 team_task_create 建共享任务，依赖完成前不得 claim；claim/complete 必须带 expectedRevision，writeScopes 重叠只警告不锁文件。\n- 长任务可 team_assign(wait=false) 后继续规划，用 team_wait 取结果；卡死时 team_interrupt 只停当前轮，不删会话。",
       "",
       "### 工具导航",
       "",
